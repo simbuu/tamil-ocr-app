@@ -1,0 +1,374 @@
+{% extends "base.html" %}
+{% block title %}Admin Review | Tamil OCR{% endblock %}
+
+{% block head %}
+<style>
+  .tabs {
+    display: flex; gap: .25rem; border-bottom: 2px solid var(--slate-100);
+    margin-bottom: 1.5rem;
+  }
+  .tab {
+    padding: .75rem 1.25rem; cursor: pointer;
+    color: var(--slate-500); font-weight: 600; font-size: .9rem;
+    border-bottom: 3px solid transparent; margin-bottom: -2px;
+    transition: all .15s;
+  }
+  .tab:hover { color: var(--green-700); }
+  .tab.active { color: var(--green-700); border-bottom-color: var(--green-500); }
+
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  .accuracy-bar {
+    height: 8px; background: var(--slate-100); border-radius: 4px;
+    overflow: hidden; margin-top: 4px;
+  }
+  .accuracy-fill {
+    height: 100%; background: linear-gradient(90deg, var(--green-500), var(--green-400));
+    transition: width .4s;
+  }
+  .accuracy-fill.low { background: linear-gradient(90deg, #f87171, #fbbf24); }
+  .accuracy-fill.mid { background: linear-gradient(90deg, #fbbf24, var(--green-400)); }
+
+  .correction-row { font-size: .85rem; }
+  .correction-row .ocr-val { color: #991b1b; text-decoration: line-through; }
+  .correction-row .saved-val { color: var(--green-700); font-weight: 600; }
+  .correction-row .arrow { color: var(--slate-500); margin: 0 .4rem; }
+
+  .severity-high { background: #fee2e2; color: #991b1b; padding: .15rem .5rem; border-radius: 4px; font-size: .7rem; font-weight: 700; }
+  .severity-mid  { background: #fef3c7; color: #78350f; padding: .15rem .5rem; border-radius: 4px; font-size: .7rem; font-weight: 700; }
+  .severity-low  { background: #dcfce7; color: #14532d; padding: .15rem .5rem; border-radius: 4px; font-size: .7rem; font-weight: 700; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header flex items-center justify-between">
+  <div>
+    <h1>🔬 Admin Review</h1>
+    <p>Monitor OCR accuracy, review corrections, and export training data.</p>
+  </div>
+  <div class="flex gap-1">
+    <select class="input" id="period" style="width:auto" onchange="loadAll()">
+      <option value="7">Last 7 days</option>
+      <option value="30" selected>Last 30 days</option>
+      <option value="90">Last 90 days</option>
+      <option value="365">Last 1 year</option>
+    </select>
+    <a href="/api/admin/export?only_corrected=true" class="btn btn-primary">⬇ Export Training Data</a>
+  </div>
+</div>
+
+<!-- Top stats -->
+<div class="stat-grid" id="stats-grid">
+  <div class="stat-card">
+    <div class="stat-label">OCR Sessions</div>
+    <div class="stat-value" id="stat-sessions">—</div>
+    <div class="stat-sub" id="stat-sessions-sub">—</div>
+    <div class="stat-icon">📷</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Edit Rate</div>
+    <div class="stat-value" id="stat-edit-rate">—</div>
+    <div class="stat-sub">% of OCR rows users had to fix</div>
+    <div class="stat-icon">✏️</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Avg Confidence</div>
+    <div class="stat-value" id="stat-confidence">—</div>
+    <div class="stat-sub">Across all OCR words</div>
+    <div class="stat-icon">⭐</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Avg OCR Time</div>
+    <div class="stat-value" id="stat-time">—</div>
+    <div class="stat-sub">Per upload (ms)</div>
+    <div class="stat-icon">⚡</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Open Issues</div>
+    <div class="stat-value" id="stat-feedback">—</div>
+    <div class="stat-sub">User-reported problems</div>
+    <div class="stat-icon">🚨</div>
+  </div>
+</div>
+
+<!-- Tabs -->
+<div class="card">
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('field')">📊 Field Accuracy</div>
+    <div class="tab" onclick="switchTab('flower')">🌸 Per-Flower Accuracy</div>
+    <div class="tab" onclick="switchTab('corrections')">✏️ Recent Corrections</div>
+    <div class="tab" onclick="switchTab('lowconf')">⚠️ Low Confidence</div>
+    <div class="tab" onclick="switchTab('failures')">💥 Failed Sessions</div>
+    <div class="tab" onclick="switchTab('feedback')">🚨 User Feedback</div>
+  </div>
+
+  <!-- Field accuracy panel -->
+  <div id="panel-field" class="tab-panel active">
+    <h3 class="card-title">Field-Level Accuracy</h3>
+    <p class="text-sm text-muted mb-2">% of OCR-extracted rows where users did NOT have to edit each field. Higher = better OCR for that field.</p>
+    <div id="field-stats">Loading…</div>
+  </div>
+
+  <!-- Flower accuracy panel -->
+  <div id="panel-flower" class="tab-panel">
+    <h3 class="card-title">Per-Flower Accuracy</h3>
+    <p class="text-sm text-muted mb-2">Which flowers does OCR recognize most reliably?</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Flower</th><th>Total OCR Rows</th><th>Edited</th><th>Accuracy</th><th>Avg Confidence</th></tr>
+        </thead>
+        <tbody id="flower-tbody">
+          <tr><td colspan="5" style="text-align:center;padding:2rem">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Corrections panel -->
+  <div id="panel-corrections" class="tab-panel">
+    <h3 class="card-title">Recent User Corrections</h3>
+    <p class="text-sm text-muted mb-2">Specific OCR errors users had to fix. This is your most valuable training data.</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Date</th><th>Field</th><th>Correction</th><th>Confidence</th><th>Image</th></tr>
+        </thead>
+        <tbody id="corrections-tbody">
+          <tr><td colspan="5" style="text-align:center;padding:2rem">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Low confidence -->
+  <div id="panel-lowconf" class="tab-panel">
+    <h3 class="card-title">Low-Confidence Transactions</h3>
+    <p class="text-sm text-muted mb-2">OCR confidence below 60% — these are most likely to contain errors.</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Date</th><th>Customer</th><th>Flower</th><th>Weight</th><th>Confidence</th><th>Edited?</th></tr>
+        </thead>
+        <tbody id="lowconf-tbody">
+          <tr><td colspan="6" style="text-align:center;padding:2rem">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Failures -->
+  <div id="panel-failures" class="tab-panel">
+    <h3 class="card-title">Failed OCR Sessions</h3>
+    <p class="text-sm text-muted mb-2">Sessions where OCR crashed or returned errors. Investigate these first.</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Session #</th><th>Date</th><th>Image Size</th><th>Error</th></tr>
+        </thead>
+        <tbody id="failures-tbody">
+          <tr><td colspan="4" style="text-align:center;padding:2rem">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Feedback -->
+  <div id="panel-feedback" class="tab-panel">
+    <h3 class="card-title">User-Reported Issues</h3>
+    <p class="text-sm text-muted mb-2">Feedback submitted by end users via the "Report Issue" button.</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Date</th><th>Type</th><th>Transaction ID</th><th>Description</th><th>Status</th><th>Action</th></tr>
+        </thead>
+        <tbody id="feedback-tbody">
+          <tr><td colspan="6" style="text-align:center;padding:2rem">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function days() { return document.getElementById('period').value; }
+
+  window.switchTab = (name) => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    event.target.classList.add('active');
+    document.getElementById(`panel-${name}`).classList.add('active');
+  };
+
+  function fmtAccuracy(val) {
+    let cls = 'low';
+    if (val >= 80) cls = '';
+    else if (val >= 50) cls = 'mid';
+    return `
+      <div style="font-weight:600">${val.toFixed(1)}%</div>
+      <div class="accuracy-bar"><div class="accuracy-fill ${cls}" style="width:${val}%"></div></div>
+    `;
+  }
+
+  async function loadOverview() {
+    const d = await api(`/api/admin/overview?days=${days()}`);
+    document.getElementById('stat-sessions').textContent = d.total_sessions;
+    document.getElementById('stat-sessions-sub').textContent = `${d.successful_sessions} OK / ${d.failed_sessions} failed`;
+    document.getElementById('stat-edit-rate').textContent = `${d.edit_rate_percent}%`;
+    document.getElementById('stat-confidence').textContent = `${d.avg_confidence_percent}%`;
+    document.getElementById('stat-time').textContent = d.avg_ocr_time_ms ? `${d.avg_ocr_time_ms}ms` : '—';
+    document.getElementById('stat-feedback').textContent = d.open_feedback;
+  }
+
+  async function loadFields() {
+    const d = await api(`/api/admin/field-accuracy?days=${days()}`);
+    const el = document.getElementById('field-stats');
+    if (d.total === 0) {
+      el.innerHTML = '<p class="text-muted">No OCR data yet. Upload some records to see accuracy stats.</p>';
+      return;
+    }
+    el.innerHTML = `
+      <p class="text-sm text-muted mb-2">Based on <strong>${d.total}</strong> OCR-extracted transactions</p>
+      ${d.fields.map(f => `
+        <div style="margin-bottom:1.25rem">
+          <div class="flex items-center justify-between">
+            <strong>${f.field}</strong>
+            <span class="text-sm text-muted">${f.edits} edits / ${d.total} total</span>
+          </div>
+          ${fmtAccuracy(f.accuracy_percent)}
+        </div>
+      `).join('')}
+    `;
+  }
+
+  async function loadFlowers() {
+    const data = await api(`/api/admin/flower-accuracy?days=${days()}`);
+    const tbody = document.getElementById('flower-tbody');
+    if (!data.length) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:2rem">No flower data yet.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = data.map(f => `
+      <tr>
+        <td><span class="badge badge-green">${f.flower_type}</span></td>
+        <td class="font-mono">${f.total}</td>
+        <td class="font-mono">${f.edited}</td>
+        <td>${fmtAccuracy(f.accuracy_percent)}</td>
+        <td class="font-mono">${f.avg_confidence_percent.toFixed(0)}%</td>
+      </tr>
+    `).join('');
+  }
+
+  async function loadCorrections() {
+    const data = await api('/api/admin/corrected?limit=100');
+    const tbody = document.getElementById('corrections-tbody');
+    const allRows = [];
+    data.forEach(tx => {
+      tx.corrections.forEach(c => {
+        allRows.push({ tx, c });
+      });
+    });
+    if (!allRows.length) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:2rem">No corrections logged yet.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = allRows.slice(0, 100).map(({tx, c}) => `
+      <tr>
+        <td class="font-mono text-sm">${tx.transaction_date}</td>
+        <td><strong>${c.field}</strong></td>
+        <td class="correction-row">
+          <span class="ocr-val font-mono">${c.ocr}</span>
+          <span class="arrow">→</span>
+          <span class="saved-val font-mono">${c.saved}</span>
+        </td>
+        <td>${tx.ocr_confidence != null ? `${(tx.ocr_confidence*100).toFixed(0)}%` : '—'}</td>
+        <td>${tx.source_image ? `<a href="/static/uploads/${tx.source_image}" target="_blank" class="btn btn-outline btn-sm">View</a>` : '—'}</td>
+      </tr>
+    `).join('');
+  }
+
+  async function loadLowConf() {
+    const data = await api('/api/admin/low-confidence?threshold=0.6&limit=100');
+    const tbody = document.getElementById('lowconf-tbody');
+    if (!data.length) {
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:2rem">No low-confidence transactions.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = data.map(tx => `
+      <tr>
+        <td class="font-mono text-sm">${tx.transaction_date}</td>
+        <td>${tx.customer_name}</td>
+        <td><span class="badge badge-green">${tx.flower_type}</span></td>
+        <td class="font-mono">${tx.weight_kg.toFixed(2)}</td>
+        <td><span class="severity-high">${(tx.ocr_confidence*100).toFixed(0)}%</span></td>
+        <td>${tx.was_edited ? `<span class="badge badge-amber">${tx.edit_count}</span>` : '—'}</td>
+      </tr>
+    `).join('');
+  }
+
+  async function loadFailures() {
+    const data = await api('/api/admin/failed-sessions');
+    const tbody = document.getElementById('failures-tbody');
+    if (!data.length) {
+      tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:2rem;color:var(--green-700)">✅ No failed sessions!</td></tr>';
+      return;
+    }
+    tbody.innerHTML = data.map(s => `
+      <tr>
+        <td class="font-mono">#${s.id}</td>
+        <td class="font-mono text-sm">${s.created_at}</td>
+        <td class="font-mono text-sm">${s.image_size_bytes ? (s.image_size_bytes/1024).toFixed(0)+' KB' : '—'}</td>
+        <td class="text-sm" style="color:#991b1b">${s.error_message || 'Unknown error'}</td>
+      </tr>
+    `).join('');
+  }
+
+  async function loadFeedback() {
+    const data = await api('/api/admin/feedback?status=open');
+    const tbody = document.getElementById('feedback-tbody');
+    if (!data.feedback.length) {
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:2rem;color:var(--green-700)">✅ No open issues!</td></tr>';
+      return;
+    }
+    tbody.innerHTML = data.feedback.map(f => `
+      <tr>
+        <td class="font-mono text-sm">${f.created_at}</td>
+        <td><span class="badge badge-amber">${f.issue_type}</span></td>
+        <td class="font-mono">${f.transaction_id ? `#${f.transaction_id}` : '—'}</td>
+        <td class="text-sm">${f.description || '<em class="text-muted">No description</em>'}</td>
+        <td><span class="badge badge-amber">${f.status}</span></td>
+        <td>
+          <button class="btn btn-outline btn-sm" onclick="resolveFeedback(${f.id})">✅ Resolve</button>
+        </td>
+      </tr>
+    `).join('');
+  }
+
+  window.resolveFeedback = async (id) => {
+    if (!confirm('Mark this issue as resolved?')) return;
+    await api(`/api/admin/feedback/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ status: 'resolved' }),
+    });
+    loadFeedback();
+    loadOverview();
+  };
+
+  async function loadAll() {
+    await Promise.all([
+      loadOverview(),
+      loadFields(),
+      loadFlowers(),
+      loadCorrections(),
+      loadLowConf(),
+      loadFailures(),
+      loadFeedback(),
+    ]);
+  }
+
+  loadAll();
+</script>
+{% endblock %}

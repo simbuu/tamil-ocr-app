@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}Tamil OCR | Flower Transactions{% endblock %}</title>
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ── Design tokens ─────────────────────────────────── */
+    :root {
+      --green-950: #052e16;
+      --green-900: #14532d;
+      --green-700: #15803d;
+      --green-500: #22c55e;
+      --green-400: #4ade80;
+      --green-200: #bbf7d0;
+      --green-100: #dcfce7;
+      --green-50:  #f0fdf4;
+      --amber-400: #fbbf24;
+      --amber-100: #fef3c7;
+      --red-400:   #f87171;
+      --red-100:   #fee2e2;
+      --slate-900: #0f172a;
+      --slate-700: #334155;
+      --slate-500: #64748b;
+      --slate-300: #cbd5e1;
+      --slate-100: #f1f5f9;
+      --white:     #ffffff;
+
+      --font-display: 'Playfair Display', serif;
+      --font-body:    'DM Sans', sans-serif;
+      --font-mono:    'DM Mono', monospace;
+
+      --radius: 12px;
+      --shadow-sm: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.04);
+      --shadow-md: 0 4px 16px rgba(0,0,0,.10), 0 2px 4px rgba(0,0,0,.06);
+      --shadow-lg: 0 20px 48px rgba(0,0,0,.14), 0 8px 16px rgba(0,0,0,.08);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--font-body);
+      background: var(--green-50);
+      color: var(--slate-900);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Nav ───────────────────────────────────────────── */
+    .nav {
+      background: var(--green-950);
+      padding: 0 2rem;
+      display: flex;
+      align-items: center;
+      gap: 2rem;
+      height: 64px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 2px 20px rgba(0,0,0,.4);
+    }
+    .nav-logo {
+      font-family: var(--font-display);
+      color: var(--green-400);
+      font-size: 1.25rem;
+      text-decoration: none;
+      white-space: nowrap;
+      display: flex;
+      align-items: center;
+      gap: .5rem;
+    }
+    .nav-logo span { color: var(--white); }
+    .nav-links { display: flex; gap: .25rem; flex: 1; }
+    .nav-link {
+      color: var(--green-200);
+      text-decoration: none;
+      padding: .5rem .9rem;
+      border-radius: 8px;
+      font-size: .9rem;
+      font-weight: 500;
+      transition: background .15s, color .15s;
+    }
+    .nav-link:hover, .nav-link.active {
+      background: rgba(74,222,128,.12);
+      color: var(--green-400);
+    }
+    .nav-badge {
+      background: var(--green-700);
+      color: var(--white);
+      font-size: .65rem;
+      padding: .15rem .4rem;
+      border-radius: 4px;
+      font-weight: 600;
+      letter-spacing: .05em;
+      margin-left: .3rem;
+    }
+
+    /* ── Page wrapper ──────────────────────────────────── */
+    .page { flex: 1; padding: 2rem; max-width: 1280px; margin: 0 auto; width: 100%; }
+
+    /* ── Cards ─────────────────────────────────────────── */
+    .card {
+      background: var(--white);
+      border-radius: var(--radius);
+      padding: 1.5rem;
+      box-shadow: var(--shadow-sm);
+      border: 1px solid var(--slate-100);
+    }
+    .card-title {
+      font-family: var(--font-display);
+      font-size: 1.25rem;
+      color: var(--green-900);
+      margin-bottom: 1rem;
+    }
+
+    /* ── Stat cards ────────────────────────────────────── */
+    .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px,1fr)); gap: 1rem; margin-bottom: 2rem; }
+    .stat-card {
+      background: var(--white);
+      border-radius: var(--radius);
+      padding: 1.25rem 1.5rem;
+      border: 1px solid var(--slate-100);
+      box-shadow: var(--shadow-sm);
+      position: relative;
+      overflow: hidden;
+    }
+    .stat-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, var(--green-500), var(--green-400));
+    }
+    .stat-label { font-size: .8rem; color: var(--slate-500); font-weight: 500; text-transform: uppercase; letter-spacing: .06em; margin-bottom: .35rem; }
+    .stat-value { font-family: var(--font-display); font-size: 2rem; color: var(--green-900); line-height: 1; }
+    .stat-sub { font-size: .8rem; color: var(--slate-500); margin-top: .35rem; }
+    .stat-icon { position: absolute; right: 1rem; top: 50%; transform: translateY(-50%); font-size: 2.5rem; opacity: .08; }
+
+    /* ── Buttons ───────────────────────────────────────── */
+    .btn {
+      display: inline-flex; align-items: center; gap: .5rem;
+      padding: .6rem 1.25rem;
+      border-radius: 8px;
+      font-family: var(--font-body);
+      font-size: .9rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: all .15s;
+      text-decoration: none;
+    }
+    .btn-primary { background: var(--green-700); color: var(--white); }
+    .btn-primary:hover { background: var(--green-900); transform: translateY(-1px); box-shadow: var(--shadow-md); }
+    .btn-outline { background: transparent; color: var(--green-700); border: 2px solid var(--green-200); }
+    .btn-outline:hover { background: var(--green-100); }
+    .btn-danger { background: var(--red-100); color: #991b1b; }
+    .btn-danger:hover { background: #fca5a5; }
+    .btn-sm { padding: .4rem .8rem; font-size: .8rem; }
+
+    /* ── Table ─────────────────────────────────────────── */
+    .table-wrap { overflow-x: auto; border-radius: var(--radius); border: 1px solid var(--slate-100); }
+    table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+    th {
+      background: var(--green-950);
+      color: var(--green-200);
+      font-size: .75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .07em;
+      padding: .85rem 1rem;
+      text-align: left;
+      white-space: nowrap;
+    }
+    td { padding: .85rem 1rem; border-bottom: 1px solid var(--slate-100); vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: var(--green-50); }
+
+    /* ── Badge ─────────────────────────────────────────── */
+    .badge {
+      display: inline-flex; align-items: center; gap: .3rem;
+      padding: .2rem .6rem;
+      border-radius: 999px;
+      font-size: .75rem;
+      font-weight: 600;
+    }
+    .badge-green { background: var(--green-100); color: var(--green-900); }
+    .badge-amber { background: var(--amber-100); color: #92400e; }
+    .badge-red   { background: var(--red-100);   color: #991b1b; }
+
+    /* ── Form inputs ───────────────────────────────────── */
+    .input {
+      width: 100%;
+      padding: .6rem .9rem;
+      border: 1.5px solid var(--slate-300);
+      border-radius: 8px;
+      font-family: var(--font-body);
+      font-size: .9rem;
+      outline: none;
+      transition: border .15s;
+    }
+    .input:focus { border-color: var(--green-500); box-shadow: 0 0 0 3px rgba(34,197,94,.12); }
+    label { font-size: .85rem; font-weight: 600; color: var(--slate-700); display: block; margin-bottom: .4rem; }
+
+    /* ── Alert ─────────────────────────────────────────── */
+    .alert { padding: .9rem 1.1rem; border-radius: 8px; font-size: .9rem; margin-bottom: 1rem; display: flex; align-items: center; gap: .5rem; }
+    .alert-success { background: var(--green-100); color: var(--green-900); border: 1px solid var(--green-200); }
+    .alert-error   { background: var(--red-100);   color: #991b1b; border: 1px solid #fca5a5; }
+    .alert-info    { background: var(--amber-100); color: #92400e; border: 1px solid #fde68a; }
+
+    /* ── Spinner ───────────────────────────────────────── */
+    .spinner {
+      width: 40px; height: 40px;
+      border: 3px solid var(--green-200);
+      border-top-color: var(--green-500);
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Page header ───────────────────────────────────── */
+    .page-header { margin-bottom: 2rem; }
+    .page-header h1 { font-family: var(--font-display); font-size: 2rem; color: var(--green-950); }
+    .page-header p  { color: var(--slate-500); margin-top: .35rem; }
+
+    /* ── Utility ───────────────────────────────────────── */
+    .flex   { display: flex; }
+    .gap-1  { gap: .5rem; }
+    .gap-2  { gap: 1rem; }
+    .items-center { align-items: center; }
+    .justify-between { justify-content: space-between; }
+    .mt-1 { margin-top: .5rem; }
+    .mt-2 { margin-top: 1rem; }
+    .mt-4 { margin-top: 2rem; }
+    .mb-2 { margin-bottom: 1rem; }
+    .text-muted { color: var(--slate-500); }
+    .text-sm  { font-size: .85rem; }
+    .font-mono { font-family: var(--font-mono); }
+    .hidden { display: none !important; }
+  </style>
+
+  {% block head %}{% endblock %}
+</head>
+<body>
+
+<nav class="nav">
+  <a href="/" class="nav-logo">🌸 <span>Tamil</span>OCR</a>
+  <div class="nav-links">
+    <a href="/" class="nav-link {% if request.url.path == '/' %}active{% endif %}">Dashboard</a>
+    <a href="/upload" class="nav-link {% if request.url.path == '/upload' %}active{% endif %}">
+      Upload <span class="nav-badge">OCR</span>
+    </a>
+    <a href="/transactions" class="nav-link {% if request.url.path == '/transactions' %}active{% endif %}">Transactions</a>
+    <a href="/rates" class="nav-link {% if request.url.path == '/rates' %}active{% endif %}">Market Rates</a>
+    <a href="/reports" class="nav-link {% if request.url.path == '/reports' %}active{% endif %}">Reports</a>
+    <a href="/admin" class="nav-link {% if request.url.path == '/admin' %}active{% endif %}">
+      Admin <span class="nav-badge">NEW</span>
+    </a>
+    <a href="/docs" class="nav-link" target="_blank">API Docs ↗</a>
+  </div>
+</nav>
+
+<main class="page">
+  {% block content %}{% endblock %}
+</main>
+
+<script>
+  // Active nav helper
+  document.querySelectorAll('.nav-link').forEach(a => {
+    if (a.href === location.href) a.classList.add('active');
+  });
+
+  // Generic fetch helper
+  async function api(url, options = {}) {
+    const r = await fetch(url, {
+      headers: {'Content-Type': 'application/json', ...options.headers},
+      ...options,
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.detail || 'Request failed');
+    return data;
+  }
+
+  function showAlert(el, type, msg) {
+    el.className = `alert alert-${type}`;
+    el.textContent = msg;
+    el.classList.remove('hidden');
+    setTimeout(() => el.classList.add('hidden'), 5000);
+  }
+</script>
+
+{% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}Dashboard | Tamil OCR{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>🌸 Flower Transaction Dashboard</h1>
+  <p>Tamil Handwritten OCR — digitise, store and analyse your flower market records.</p>
+</div>
+
+<!-- Stat cards -->
+<div class="stat-grid" id="stats-grid">
+  <div class="stat-card">
+    <div class="stat-label">Total Transactions</div>
+    <div class="stat-value" id="stat-txs">—</div>
+    <div class="stat-sub">All time records</div>
+    <div class="stat-icon">📋</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Total Revenue</div>
+    <div class="stat-value" id="stat-rev">—</div>
+    <div class="stat-sub">All time (₹)</div>
+    <div class="stat-icon">💰</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Customers</div>
+    <div class="stat-value" id="stat-cust">—</div>
+    <div class="stat-sub">Unique customers</div>
+    <div class="stat-icon">👥</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Weekly Revenue</div>
+    <div class="stat-value" id="stat-week">—</div>
+    <div class="stat-sub">Last 7 days (₹)</div>
+    <div class="stat-icon">📈</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Top Flower</div>
+    <div class="stat-value" id="stat-flower" style="font-size:1.3rem">—</div>
+    <div class="stat-sub">By total weight</div>
+    <div class="stat-icon">🌺</div>
+  </div>
+</div>
+
+<!-- Quick actions -->
+<div class="flex gap-2 mb-2">
+  <a href="/upload" class="btn btn-primary">📷 Upload Handwritten Record</a>
+  <a href="/reports" class="btn btn-outline">📄 Generate Reports</a>
+</div>
+
+<!-- Recent transactions -->
+<div class="card mt-4">
+  <div class="flex items-center justify-between mb-2">
+    <h2 class="card-title" style="margin:0">Recent Transactions</h2>
+    <a href="/transactions" class="btn btn-outline btn-sm">View All →</a>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Customer</th>
+          <th>Flower</th>
+          <th>Weight (kg)</th>
+          <th>Rate (₹/kg)</th>
+          <th>Amount (₹)</th>
+          <th>Confidence</th>
+        </tr>
+      </thead>
+      <tbody id="recent-tbody">
+        <tr><td colspan="7" style="text-align:center;padding:2rem;color:var(--slate-500)">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  async function loadDashboard() {
+    // Stats
+    try {
+      const s = await api('/api/transactions/stats');
+      document.getElementById('stat-txs').textContent    = s.total_transactions.toLocaleString();
+      document.getElementById('stat-rev').textContent    = '₹ ' + s.total_revenue.toLocaleString('en-IN', {maximumFractionDigits:0});
+      document.getElementById('stat-cust').textContent   = s.total_customers.toLocaleString();
+      document.getElementById('stat-week').textContent   = '₹ ' + s.weekly_revenue.toLocaleString('en-IN', {maximumFractionDigits:0});
+      document.getElementById('stat-flower').textContent = s.top_flower;
+    } catch(e) { console.error(e); }
+
+    // Recent transactions
+    try {
+      const data = await api('/api/transactions/?limit=10');
+      const tbody = document.getElementById('recent-tbody');
+      if (!data.transactions.length) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:2rem;color:var(--slate-500)">No transactions yet. <a href="/upload" style="color:var(--green-700)">Upload your first record →</a></td></tr>';
+        return;
+      }
+      tbody.innerHTML = data.transactions.map(tx => `
+        <tr>
+          <td class="text-sm font-mono">${tx.transaction_date}</td>
+          <td><strong>${tx.customer_name}</strong>${tx.customer_name_tamil ? `<br><span class="text-sm text-muted">${tx.customer_name_tamil}</span>` : ''}</td>
+          <td><span class="badge badge-green">${tx.flower_type}</span></td>
+          <td class="font-mono">${tx.weight_kg.toFixed(2)}</td>
+          <td class="font-mono">₹ ${tx.price_per_kg.toFixed(2)}</td>
+          <td class="font-mono" style="color:var(--green-700);font-weight:600">₹ ${tx.total_amount.toFixed(2)}</td>
+          <td>
+            ${tx.ocr_confidence != null
+              ? `<span class="badge ${tx.ocr_confidence > .8 ? 'badge-green' : tx.ocr_confidence > .5 ? 'badge-amber' : 'badge-red'}">${(tx.ocr_confidence*100).toFixed(0)}%</span>`
+              : '<span class="text-muted">—</span>'}
+          </td>
+        </tr>
+      `).join('');
+    } catch(e) { console.error(e); }
+  }
+
+  loadDashboard();
+</script>
+{% endblock %}

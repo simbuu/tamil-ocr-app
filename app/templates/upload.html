@@ -1,0 +1,354 @@
+{% extends "base.html" %}
+{% block title %}Upload | Tamil OCR{% endblock %}
+
+{% block head %}
+<style>
+  .upload-zone {
+    border: 2.5px dashed var(--green-200);
+    border-radius: var(--radius);
+    padding: 3rem 2rem;
+    text-align: center;
+    cursor: pointer;
+    transition: all .2s;
+    background: var(--white);
+    position: relative;
+  }
+  .upload-zone:hover, .upload-zone.drag-over {
+    border-color: var(--green-500);
+    background: var(--green-50);
+  }
+  .upload-zone input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  .upload-icon { font-size: 3.5rem; margin-bottom: 1rem; }
+  .upload-title { font-family: var(--font-display); font-size: 1.4rem; color: var(--green-900); }
+  .upload-sub   { color: var(--slate-500); margin-top: .4rem; font-size: .9rem; }
+  .preview-img { max-width: 100%; max-height: 340px; object-fit: contain; border-radius: 8px; border: 1px solid var(--slate-100); }
+
+  .ocr-row {
+    background: var(--green-50);
+    border: 1.5px solid var(--green-200);
+    border-radius: 10px;
+    padding: 1rem 1.25rem;
+    margin-bottom: .75rem;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr auto;
+    gap: .75rem;
+    align-items: end;
+  }
+  .ocr-row.edited { background: #fef3c7; border-color: #fbbf24; }
+  .ocr-row.manual { background: #dbeafe; border-color: #60a5fa; }
+  .ocr-row label { font-size: .78rem; color: var(--slate-500); font-weight: 600; margin-bottom: .25rem; text-transform: uppercase; }
+  .ocr-row input  { background: var(--white); }
+  .row-flag { font-size: .7rem; padding: .15rem .4rem; border-radius: 4px; margin-bottom: .25rem; display: inline-block; font-weight: 600; }
+  .flag-edited { background: #fbbf24; color: #78350f; }
+  .flag-manual { background: #60a5fa; color: #1e3a5f; }
+  .flag-ocr    { background: var(--green-200); color: var(--green-900); }
+
+  .confidence-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 5px; }
+  .conf-high { background: var(--green-500); }
+  .conf-mid  { background: #fbbf24; }
+  .conf-low  { background: #f87171; }
+
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+  @media(max-width:768px){ .two-col{ grid-template-columns:1fr; } .ocr-row{ grid-template-columns:1fr 1fr; } }
+
+  .stats-pills { display: flex; gap: .5rem; flex-wrap: wrap; font-size: .8rem; }
+  .pill { padding: .25rem .6rem; border-radius: 4px; background: var(--green-100); color: var(--green-900); font-weight: 600; }
+  .pill-amber { background: #fef3c7; color: #78350f; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>📷 Upload Handwritten Record</h1>
+  <p>Upload an image. Edit any incorrect OCR results before saving — we track corrections to improve accuracy over time.</p>
+</div>
+
+<div id="alert" class="alert hidden"></div>
+
+<div class="two-col">
+  <!-- Upload panel -->
+  <div>
+    <div class="card">
+      <h2 class="card-title">Image Upload</h2>
+
+      <div class="upload-zone" id="drop-zone">
+        <input type="file" id="file-input" accept="image/*" />
+        <div class="upload-icon">🖼️</div>
+        <div class="upload-title">Drop image here or click to browse</div>
+        <div class="upload-sub">JPG, PNG, TIFF, WebP — Tamil handwriting supported</div>
+      </div>
+
+      <div id="preview-wrap" class="hidden mt-2" style="text-align:center">
+        <img id="preview-img" class="preview-img" />
+        <p id="file-name" class="text-sm text-muted mt-1"></p>
+      </div>
+
+      <div class="mt-2">
+        <label for="tx-date">Transaction Date</label>
+        <input type="date" id="tx-date" class="input" />
+      </div>
+
+      <div class="mt-2">
+        <button class="btn btn-primary" id="run-ocr-btn" style="width:100%;justify-content:center" disabled>
+          🔍 Run OCR
+        </button>
+      </div>
+    </div>
+
+    <div class="card mt-2" style="background:var(--green-950);color:var(--green-200)">
+      <h3 style="font-family:var(--font-display);color:var(--green-400);margin-bottom:.75rem">📊 We track corrections</h3>
+      <p style="font-size:.88rem;line-height:1.6">Every edit you make is logged anonymously. This data helps us identify which fields and flowers OCR struggles with — so we can improve accuracy for your specific handwriting style.</p>
+    </div>
+  </div>
+
+  <!-- Results panel -->
+  <div id="results-panel" class="hidden">
+    <div class="card">
+      <div class="flex items-center justify-between mb-2">
+        <h2 class="card-title" style="margin:0">Extracted Transactions</h2>
+        <div id="ocr-meta" class="text-sm text-muted"></div>
+      </div>
+
+      <div id="stats-pills" class="stats-pills mb-2"></div>
+
+      <div id="ocr-loading" class="hidden" style="text-align:center;padding:2rem">
+        <div class="spinner" style="margin:0 auto 1rem"></div>
+        <p class="text-muted">Running Tamil OCR pipeline…</p>
+        <p class="text-sm text-muted mt-1">First run takes 15-30s (model loading)</p>
+      </div>
+
+      <div id="ocr-rows"></div>
+
+      <div class="flex gap-1 mt-2">
+        <button class="btn btn-primary" id="save-btn" style="flex:1;justify-content:center">
+          💾 Save All Transactions
+        </button>
+        <button class="btn btn-outline btn-sm" id="add-row-btn">+ Add Row</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const fileInput   = document.getElementById('file-input');
+  const dropZone    = document.getElementById('drop-zone');
+  const previewWrap = document.getElementById('preview-wrap');
+  const previewImg  = document.getElementById('preview-img');
+  const fileName    = document.getElementById('file-name');
+  const runBtn      = document.getElementById('run-ocr-btn');
+  const saveBtn     = document.getElementById('save-btn');
+  const addRowBtn   = document.getElementById('add-row-btn');
+  const resultsPanel= document.getElementById('results-panel');
+  const ocrRows     = document.getElementById('ocr-rows');
+  const ocrLoading  = document.getElementById('ocr-loading');
+  const ocrMeta     = document.getElementById('ocr-meta');
+  const statsPills  = document.getElementById('stats-pills');
+  const alertEl     = document.getElementById('alert');
+  const txDate      = document.getElementById('tx-date');
+
+  txDate.value = new Date().toISOString().split('T')[0];
+
+  let currentFile = null;
+  let currentFilename = null;
+  let currentSessionId = null;
+  let extractedTransactions = [];
+
+  function handleFile(file) {
+    if (!file || !file.type.startsWith('image/')) {
+      showAlert(alertEl, 'error', 'Please select a valid image file.');
+      return;
+    }
+    currentFile = file;
+    previewImg.src = URL.createObjectURL(file);
+    fileName.textContent = `${file.name} (${(file.size/1024).toFixed(1)} KB)`;
+    previewWrap.classList.remove('hidden');
+    runBtn.disabled = false;
+  }
+
+  fileInput.addEventListener('change', () => handleFile(fileInput.files[0]));
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault(); dropZone.classList.remove('drag-over');
+    handleFile(e.dataTransfer.files[0]);
+  });
+
+  runBtn.addEventListener('click', async () => {
+    if (!currentFile) return;
+    resultsPanel.classList.remove('hidden');
+    ocrLoading.classList.remove('hidden');
+    ocrRows.innerHTML = '';
+    statsPills.innerHTML = '';
+    runBtn.disabled = true;
+    runBtn.textContent = '⏳ Processing…';
+
+    try {
+      const fd = new FormData();
+      fd.append('file', currentFile);
+      fd.append('transaction_date', txDate.value);
+
+      const r = await fetch('/api/ocr/upload', { method: 'POST', body: fd });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.detail || 'OCR failed');
+
+      ocrLoading.classList.add('hidden');
+      currentFilename = data.filename;
+      currentSessionId = data.session_id;
+      extractedTransactions = data.transactions;
+      ocrMeta.textContent = `Session #${data.session_id} · ${data.word_count} words · ${data.transaction_count} rows · ${data.total_ms}ms`;
+
+      // Pills with stats
+      statsPills.innerHTML = `
+        <span class="pill">📷 ${data.transaction_count} rows extracted</span>
+        ${data.avg_confidence ? `<span class="pill">⭐ ${(data.avg_confidence*100).toFixed(0)}% avg confidence</span>` : ''}
+        <span class="pill">⚡ ${data.total_ms}ms</span>
+      `;
+
+      if (!data.transactions.length) {
+        ocrRows.innerHTML = '<div class="alert alert-info">No transaction rows detected. You can add them manually below.</div>';
+      } else {
+        renderRows(data.transactions);
+      }
+      showAlert(alertEl, 'success', `OCR complete! ${data.transaction_count} transactions extracted.`);
+    } catch(e) {
+      ocrLoading.classList.add('hidden');
+      showAlert(alertEl, 'error', e.message);
+    } finally {
+      runBtn.disabled = false;
+      runBtn.textContent = '🔍 Run OCR';
+    }
+  });
+
+  function confClass(c) {
+    if (c == null) return '';
+    return c > .8 ? 'conf-high' : c > .5 ? 'conf-mid' : 'conf-low';
+  }
+
+  function renderRows(rows) {
+    ocrRows.innerHTML = rows.map((tx, i) => {
+      const isManual = tx.manually_added;
+      const flagClass = isManual ? 'manual' : '';
+      const flagBadge = isManual
+        ? '<span class="row-flag flag-manual">MANUAL</span>'
+        : '<span class="row-flag flag-ocr">OCR</span>';
+
+      return `
+        <div class="ocr-row ${flagClass}" data-index="${i}">
+          <div>
+            ${flagBadge}
+            <label>Customer Name</label>
+            <input class="input" data-field="customer_name" value="${tx.customer_name || ''}" oninput="markEdited(${i})" />
+          </div>
+          <div>
+            <label>Flower Type</label>
+            <input class="input" data-field="flower_type" value="${tx.flower_type || ''}" oninput="markEdited(${i})" />
+          </div>
+          <div>
+            <label>Weight (kg)</label>
+            <input class="input" type="number" step="0.01" data-field="weight_kg" value="${tx.weight_kg || 0}" oninput="markEdited(${i})" />
+          </div>
+          <div>
+            <label>Rate (₹) | Amount</label>
+            <input class="input font-mono" data-field="price_per_kg" type="number" step="0.01" value="${tx.price_per_kg || 0}" />
+            <div class="text-sm font-mono mt-1" style="color:var(--green-700);font-weight:600">₹ ${(tx.total_amount||0).toFixed(2)}</div>
+          </div>
+          <div>
+            ${tx.ocr_confidence != null
+              ? `<span class="confidence-dot ${confClass(tx.ocr_confidence)}"></span>${(tx.ocr_confidence*100).toFixed(0)}%`
+              : ''}
+            <button class="btn btn-danger btn-sm mt-1" onclick="removeRow(${i})">✕</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  // Visual feedback when user edits a row
+  window.markEdited = (i) => {
+    const tx = extractedTransactions[i];
+    if (tx.manually_added) return;
+    const orig = tx.ocr_original || {};
+    const row = document.querySelector(`.ocr-row[data-index="${i}"]`);
+    const get = f => row.querySelector(`[data-field="${f}"]`)?.value;
+
+    const changed = (
+      (orig.customer_name && get('customer_name') !== orig.customer_name) ||
+      (orig.flower_type && get('flower_type') !== orig.flower_type) ||
+      (orig.weight_kg !== undefined && Math.abs(parseFloat(get('weight_kg')) - parseFloat(orig.weight_kg)) > 0.001)
+    );
+
+    if (changed) {
+      row.classList.add('edited');
+      let flag = row.querySelector('.flag-ocr');
+      if (flag) {
+        flag.className = 'row-flag flag-edited';
+        flag.textContent = 'EDITED';
+      }
+    }
+  };
+
+  window.removeRow = (i) => {
+    extractedTransactions.splice(i, 1);
+    renderRows(extractedTransactions);
+  };
+
+  addRowBtn.addEventListener('click', () => {
+    extractedTransactions.push({
+      customer_name: '', flower_type: '', weight_kg: 0,
+      price_per_kg: 0, total_amount: 0,
+      transaction_date: txDate.value, source_image: currentFilename,
+      manually_added: true, // ⭐ marker
+      ocr_original: null,
+    });
+    renderRows(extractedTransactions);
+    resultsPanel.classList.remove('hidden');
+  });
+
+  saveBtn.addEventListener('click', async () => {
+    const rowEls = document.querySelectorAll('.ocr-row');
+    const transactions = Array.from(rowEls).map((row, i) => {
+      const get = f => row.querySelector(`[data-field="${f}"]`)?.value;
+      const tx = extractedTransactions[i];
+      return {
+        ...tx,
+        customer_name: get('customer_name'),
+        flower_type:   get('flower_type'),
+        weight_kg:     parseFloat(get('weight_kg') || 0),
+        price_per_kg:  parseFloat(get('price_per_kg') || 0),
+        total_amount:  parseFloat(get('weight_kg') || 0) * parseFloat(get('price_per_kg') || 0),
+        transaction_date: txDate.value,
+        source_image: currentFilename,
+        // Preserve original OCR values for correction analysis
+        ocr_original: tx.ocr_original,
+        manually_added: !!tx.manually_added,
+      };
+    });
+
+    if (!transactions.length) {
+      showAlert(alertEl, 'error', 'No transactions to save.');
+      return;
+    }
+
+    saveBtn.disabled = true;
+    saveBtn.textContent = '⏳ Saving…';
+
+    try {
+      const res = await api('/api/ocr/confirm', {
+        method: 'POST',
+        body: JSON.stringify({ transactions, session_id: currentSessionId }),
+      });
+      showAlert(alertEl, 'success', res.message);
+      ocrRows.innerHTML = '';
+      statsPills.innerHTML = '';
+      extractedTransactions = [];
+    } catch(e) {
+      showAlert(alertEl, 'error', e.message);
+    } finally {
+      saveBtn.disabled = false;
+      saveBtn.textContent = '💾 Save All Transactions';
+    }
+  });
+</script>
+{% endblock %}

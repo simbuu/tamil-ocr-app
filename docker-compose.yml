@@ -1,0 +1,37 @@
+version: "3.9"
+
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+      - ocr_models:/app/models
+      - uploads:/app/app/static/uploads
+    environment:
+      - DATABASE_URL=postgresql://ocr_user:ocr_pass@db:5432/tamil_ocr
+      - USE_GPU=false
+    depends_on:
+      db:
+        condition: service_healthy
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ocr_user
+      POSTGRES_PASSWORD: ocr_pass
+      POSTGRES_DB: tamil_ocr
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ocr_user -d tamil_ocr"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pg_data:
+  ocr_models:
+  uploads:

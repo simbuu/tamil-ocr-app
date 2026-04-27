@@ -1,0 +1,208 @@
+{% extends "base.html" %}
+{% block title %}Transactions | Tamil OCR{% endblock %}
+
+{% block head %}
+<style>
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.5);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 1000;
+  }
+  .modal {
+    background: var(--white); border-radius: 12px; padding: 1.5rem;
+    max-width: 480px; width: 90%; box-shadow: 0 20px 48px rgba(0,0,0,.2);
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header flex items-center justify-between">
+  <div>
+    <h1>📋 Transaction Records</h1>
+    <p>Browse, filter, and report issues with digitised records.</p>
+  </div>
+  <a href="/upload" class="btn btn-primary">+ Upload New</a>
+</div>
+
+<div id="alert" class="alert hidden"></div>
+
+<div class="card mb-2">
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1rem;align-items:end">
+    <div>
+      <label for="f-customer">Customer Name</label>
+      <input class="input" id="f-customer" placeholder="Search customer…" />
+    </div>
+    <div>
+      <label for="f-flower">Flower Type</label>
+      <input class="input" id="f-flower" placeholder="e.g. Rose" />
+    </div>
+    <div>
+      <label for="f-from">From Date</label>
+      <input class="input" type="date" id="f-from" />
+    </div>
+    <div>
+      <label for="f-to">To Date</label>
+      <input class="input" type="date" id="f-to" />
+    </div>
+    <div>
+      <button class="btn btn-primary" id="search-btn" style="width:100%;justify-content:center">🔍 Search</button>
+    </div>
+    <div>
+      <button class="btn btn-outline" id="reset-btn" style="width:100%;justify-content:center">Reset</button>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="flex items-center justify-between mb-2">
+    <h2 class="card-title" style="margin:0">Results <span id="count-badge" class="badge badge-green" style="font-size:.85rem;margin-left:.5rem"></span></h2>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Date</th>
+          <th>Customer</th>
+          <th>Flower</th>
+          <th>Weight</th>
+          <th>Amount</th>
+          <th>Source</th>
+          <th>Confidence</th>
+          <th>Edited?</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="tx-tbody">
+        <tr><td colspan="10" style="text-align:center;padding:2rem;color:var(--slate-500)">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Report Issue Modal -->
+<div id="report-modal" class="modal-overlay hidden">
+  <div class="modal">
+    <h2 class="card-title">🚨 Report a Problem</h2>
+    <p class="text-sm text-muted mb-2">Help us improve by reporting issues with this transaction.</p>
+
+    <div class="mt-2">
+      <label>What's the issue?</label>
+      <select class="input" id="issue-type">
+        <option value="wrong_name">Wrong customer name</option>
+        <option value="wrong_flower">Wrong flower type</option>
+        <option value="wrong_weight">Wrong weight</option>
+        <option value="wrong_price">Wrong price</option>
+        <option value="missed_row">Missed a row from the image</option>
+        <option value="extra_row">Added an extra row that wasn't there</option>
+        <option value="image_quality">Image was hard to read</option>
+        <option value="other">Other</option>
+      </select>
+    </div>
+
+    <div class="mt-2">
+      <label>Details (optional)</label>
+      <textarea class="input" id="issue-desc" rows="3" placeholder="What should it have been?"></textarea>
+    </div>
+
+    <div class="flex gap-1 mt-2">
+      <button class="btn btn-outline btn-sm" onclick="closeReport()" style="flex:1;justify-content:center">Cancel</button>
+      <button class="btn btn-primary btn-sm" onclick="submitReport()" style="flex:1;justify-content:center">Submit</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const tbody       = document.getElementById('tx-tbody');
+  const alertEl     = document.getElementById('alert');
+  const countBadge  = document.getElementById('count-badge');
+  const reportModal = document.getElementById('report-modal');
+  let reportingTxId = null;
+
+  async function loadTransactions(params = {}) {
+    const qs = new URLSearchParams(Object.entries(params).filter(([,v])=>v)).toString();
+    const data = await api(`/api/transactions/?${qs}&limit=200`);
+    countBadge.textContent = `${data.count} records`;
+
+    if (!data.transactions.length) {
+      tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:2rem;color:var(--slate-500)">No transactions found.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = data.transactions.map(tx => `
+      <tr>
+        <td class="font-mono text-sm" style="color:var(--slate-500)">${tx.id}</td>
+        <td class="font-mono text-sm">${tx.transaction_date}</td>
+        <td>
+          <strong>${tx.customer_name}</strong>
+          ${tx.customer_name_tamil ? `<br><span class="text-sm text-muted">${tx.customer_name_tamil}</span>` : ''}
+        </td>
+        <td><span class="badge badge-green">${tx.flower_type}</span></td>
+        <td class="font-mono">${tx.weight_kg.toFixed(2)} kg</td>
+        <td class="font-mono" style="color:var(--green-700);font-weight:600">₹ ${tx.total_amount.toFixed(2)}</td>
+        <td class="text-sm text-muted">
+          ${tx.was_manually_added ? '<span class="badge badge-amber">Manual</span>' : (tx.source_image ? '📷 OCR' : '—')}
+        </td>
+        <td>${tx.ocr_confidence != null
+          ? `<span class="badge ${tx.ocr_confidence>.8?'badge-green':tx.ocr_confidence>.5?'badge-amber':'badge-red'}">${(tx.ocr_confidence*100).toFixed(0)}%</span>`
+          : '<span class="text-muted">—</span>'}</td>
+        <td>${tx.was_edited ? `<span class="badge badge-amber" title="${tx.edit_count} fields edited">✏ ${tx.edit_count}</span>` : '<span class="text-muted">—</span>'}</td>
+        <td style="white-space:nowrap">
+          <button class="btn btn-outline btn-sm" onclick="openReport(${tx.id})" title="Report issue">🚨</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteTx(${tx.id})">🗑</button>
+        </td>
+      </tr>
+    `).join('');
+  }
+
+  window.deleteTx = async (id) => {
+    if (!confirm('Delete this transaction?')) return;
+    try {
+      await api(`/api/transactions/${id}`, { method: 'DELETE' });
+      showAlert(alertEl, 'success', 'Transaction deleted.');
+      loadTransactions(currentParams());
+    } catch(e) { showAlert(alertEl, 'error', e.message); }
+  };
+
+  window.openReport = (id) => {
+    reportingTxId = id;
+    document.getElementById('issue-type').value = 'wrong_name';
+    document.getElementById('issue-desc').value = '';
+    reportModal.classList.remove('hidden');
+  };
+  window.closeReport = () => {
+    reportModal.classList.add('hidden');
+    reportingTxId = null;
+  };
+  window.submitReport = async () => {
+    const issue_type = document.getElementById('issue-type').value;
+    const description = document.getElementById('issue-desc').value;
+    try {
+      await api('/api/admin/feedback', {
+        method: 'POST',
+        body: JSON.stringify({ transaction_id: reportingTxId, issue_type, description }),
+      });
+      showAlert(alertEl, 'success', 'Thanks for the report! It has been logged for review.');
+      closeReport();
+    } catch(e) { showAlert(alertEl, 'error', e.message); }
+  };
+
+  function currentParams() {
+    return {
+      customer_name: document.getElementById('f-customer').value,
+      flower_type:   document.getElementById('f-flower').value,
+      start_date:    document.getElementById('f-from').value,
+      end_date:      document.getElementById('f-to').value,
+    };
+  }
+  document.getElementById('search-btn').addEventListener('click', () => loadTransactions(currentParams()));
+  document.getElementById('reset-btn').addEventListener('click', () => {
+    ['f-customer','f-flower','f-from','f-to'].forEach(id => document.getElementById(id).value = '');
+    loadTransactions();
+  });
+
+  loadTransactions();
+</script>
+{% endblock %}
