@@ -28,6 +28,9 @@ class Transaction(Base):
     # Date
     transaction_date = Column(Date, nullable=False, index=True)
 
+    # Flower grade from template (A = 1st, B = 2nd, C = 3rd category)
+    grade = Column(String(1), nullable=True, index=True)
+
     # OCR metadata
     source_image = Column(String(500), nullable=True)
     ocr_confidence = Column(Float, nullable=True)
@@ -74,6 +77,7 @@ class Transaction(Base):
             "ocr_weight_kg": self.ocr_weight_kg,
             "was_edited": self.was_edited,
             "edit_count": self.edit_count,
+            "grade": self.grade,
             "was_manually_added": self.was_manually_added,
             "created_at": str(self.created_at),
         }

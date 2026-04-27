@@ -24,9 +24,35 @@ Base = declarative_base()
 
 
 def init_db():
-    """Create all tables."""
+    """Create all tables and apply incremental column migrations."""
     from app.models import transaction, market_rate, ocr_session, feedback  # noqa: F401
     Base.metadata.create_all(bind=engine)
+    _run_migrations()
+
+
+def _run_migrations():
+    """Safely add new columns to existing tables without dropping data."""
+    import sqlalchemy as sa
+    is_postgres = "postgresql" in str(engine.url)
+    migrations = [
+        # (table, column, sql_type)
+        ("transactions", "grade", "VARCHAR(1)"),
+    ]
+    with engine.connect() as conn:
+        for table, col, sql_type in migrations:
+            try:
+                if is_postgres:
+                    conn.execute(sa.text(
+                        f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {col} {sql_type}"
+                    ))
+                else:
+                    # SQLite doesn't support IF NOT EXISTS on ALTER TABLE
+                    conn.execute(sa.text(
+                        f"ALTER TABLE {table} ADD COLUMN {col} {sql_type}"
+                    ))
+                conn.commit()
+            except Exception:
+                conn.rollback()  # Column already exists — safe to ignore
 
 
 def get_db():

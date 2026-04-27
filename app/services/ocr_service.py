@@ -69,11 +69,31 @@ def preprocess_image(image_bytes: bytes) -> np.ndarray:
 FLOWER_KEYWORDS_EN = [
     "rose", "jasmine", "marigold", "lotus", "lily",
     "chrysanthemum", "tuberose", "crossandra", "kanakambaram",
+    "arali", "oleander", "nandiyar", "champak",
+    "mullai", "samandhi", "sevanthi", "thulasi",
 ]
 
 FLOWER_KEYWORDS_TA = [
-    "ரோஜா", "மல்லிகை", "செம்பருத்தி", "தாமரை", "லில்லி",
-    "சேவந்தி", "நிலாம்பரி", "குறிஞ்சி", "கனகாம்பரம்",
+    # Common market flowers
+    "ரோஜா",          # rose
+    "மல்லிகை",        # jasmine
+    "செம்பருத்தி",    # hibiscus
+    "தாமரை",          # lotus
+    "லில்லி",         # lily
+    "சேவந்தி",        # chrysanthemum / sevanthi
+    "நிலாம்பரி",      # tuberose
+    "குறிஞ்சி",       # kurinji
+    "கனகாம்பரம்",    # kanakambaram / crossandra
+    "அரளி",           # arali / oleander (common variant)
+    "அரலி",           # arali (alternate spelling OCR often produces)
+    "நந்தியம்வட்டை", # nandiyamvattai
+    "நந்தியம்வன்",   # nandiyamvan
+    "நந்தியார்வட்டை",# nandiyar
+    "முல்லை",         # mullai / jasmine variety
+    "சாமந்தி",        # samandhi / chrysanthemum
+    "துளசி",          # thulasi / tulsi
+    "பாரிஜாதம்",     # parijatham / night jasmine
+    "மரிகோல்டு",     # marigold (transliterated)
 ]
 
 
@@ -83,13 +103,18 @@ def extract_transactions_from_ocr(ocr_results: list[dict]) -> list[dict]:
 
     sorted_results = sorted(ocr_results, key=lambda r: (r["bbox"][0][1], r["bbox"][0][0]))
 
+    # Group OCR words into rows by Y-position.
+    # ROW_THRESHOLD: pixels of vertical tolerance — increased for A4 template rows.
+    # We use the *centre* Y of each bounding box for stability.
     rows = []
     current_row = []
     prev_y = None
-    ROW_THRESHOLD = 30
+    ROW_THRESHOLD = 20   # tight — template rows are ~40px apart at 150dpi
 
     for item in sorted_results:
-        y = item["bbox"][0][1]
+        # Use centre Y of bbox for more stable grouping
+        ys = [pt[1] for pt in item["bbox"]]
+        y = sum(ys) / len(ys)
         if prev_y is None or abs(y - prev_y) <= ROW_THRESHOLD:
             current_row.append(item)
         else:
@@ -103,12 +128,20 @@ def extract_transactions_from_ocr(ocr_results: list[dict]) -> list[dict]:
 
     transactions = []
     for row in rows:
-        row_texts = [r["text"].strip() for r in row if r["text"].strip()]
+        # Sort words in row left-to-right before joining
+        row_sorted = sorted(row, key=lambda r: r["bbox"][0][0])
+        row_texts = [r["text"].strip() for r in row_sorted if r["text"].strip()]
         row_text = " ".join(row_texts)
-        avg_conf = sum(r["confidence"] for r in row) / len(row)
+        avg_conf = sum(r["confidence"] for r in row_sorted) / len(row_sorted)
 
         parsed = _parse_row(row_text, avg_conf)
         if parsed:
+            # ── KEY FILTER: discard empty template rows ────────────────────
+            # Empty rows only have the printed S.No number; OCR sees just
+            # a digit and the parser treats it as a weight. Reject any row
+            # where BOTH customer and flower are unknown — it's a blank row.
+            if parsed["customer_name"] == "Unknown" and parsed["flower_type"] == "Unknown":
+                continue
             transactions.append(parsed)
 
     return transactions
@@ -157,11 +190,21 @@ def _parse_row(text: str, confidence: float) -> Optional[dict]:
     clean = re.sub(r"[^\w\s\u0B80-\u0BFF]", " ", clean).strip()
     clean = re.sub(r"\s+", " ", clean)
 
-    tamil_chars = re.findall(r"[\u0B80-\u0BFF]+", clean)
-    latin_chars = re.findall(r"[A-Za-z]+", clean)
+    # ── Grade detection: standalone A / B / C in row ─────────────────────────
+    grade_match = re.search(r"\b([ABC])\b", text, re.IGNORECASE)
+    grade = grade_match.group(1).upper() if grade_match else None
 
-    customer_name_ta = " ".join(tamil_chars) if tamil_chars else None
-    customer_name_en = " ".join(latin_chars) if latin_chars else None
+    tamil_words = re.findall(r"[\u0B80-\u0BFF]+", clean)
+    # Require ≥2 Tamil characters per word to filter out stray glyphs from S.No / table borders
+    tamil_words = [w for w in tamil_words if len(w) >= 2]
+
+    # Strip grade letters and unit words that bleed into customer name
+    latin_words = [w for w in re.findall(r"[A-Za-z]+", clean)
+                   if w.upper() not in ("A", "B", "C", "KG", "KGS", "GM", "G", "GRAM", "GRAMS")
+                   and len(w) >= 2]
+
+    customer_name_ta = " ".join(tamil_words) if tamil_words else None
+    customer_name_en = " ".join(latin_words) if latin_words else None
     customer_name = customer_name_en or customer_name_ta or "Unknown"
 
     return {
@@ -169,7 +212,8 @@ def _parse_row(text: str, confidence: float) -> Optional[dict]:
         "customer_name_tamil": customer_name_ta,
         "flower_type": flower_type,
         "flower_type_tamil": flower_type_ta,
-        "weight_kg": weight_kg,
+        "weight_kg": round(weight_kg, 4),
+        "grade": grade,
         "ocr_confidence": round(confidence, 3),
         "raw_text": text,
     }
@@ -180,55 +224,4 @@ def _parse_row(text: str, confidence: float) -> Optional[dict]:
 def run_ocr(image_bytes: bytes) -> dict:
     """
     Full pipeline with per-stage timing.
-    Returns timing data so it can be persisted to ocr_sessions table.
-    """
-    timings = {"preprocessing_ms": 0, "ocr_ms": 0, "parsing_ms": 0}
-    try:
-        # Image dimensions
-        img_w, img_h = get_image_dimensions(image_bytes)
-
-        # 1. Preprocess
-        t0 = time.perf_counter()
-        processed = preprocess_image(image_bytes)
-        timings["preprocessing_ms"] = int((time.perf_counter() - t0) * 1000)
-
-        # 2. OCR
-        t0 = time.perf_counter()
-        reader = get_reader()
-        raw = reader.readtext(processed, detail=1, paragraph=False)
-        timings["ocr_ms"] = int((time.perf_counter() - t0) * 1000)
-
-        normalized = [
-            {"bbox": [[float(x), float(y)] for x, y in item[0]],
-             "text": item[1], "confidence": float(item[2])}
-            for item in raw
-        ]
-
-        # 3. Parse
-        t0 = time.perf_counter()
-        transactions = extract_transactions_from_ocr(normalized)
-        timings["parsing_ms"] = int((time.perf_counter() - t0) * 1000)
-
-        # Aggregate confidence
-        avg_conf = (sum(n["confidence"] for n in normalized) / len(normalized)) if normalized else None
-
-        return {
-            "success": True,
-            "raw_results": normalized,
-            "transactions": transactions,
-            "word_count": len(normalized),
-            "transaction_count": len(transactions),
-            "avg_confidence": round(avg_conf, 3) if avg_conf else None,
-            "image_width": img_w,
-            "image_height": img_h,
-            "timings": timings,
-        }
-
-    except Exception as e:
-        logger.error(f"OCR pipeline error: {e}", exc_info=True)
-        return {
-            "success": False,
-            "error": str(e),
-            "transactions": [],
-            "timings": timings,
-        }
+    Returns timing 
