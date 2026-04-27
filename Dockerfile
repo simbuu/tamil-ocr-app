@@ -30,8 +30,11 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 
 COPY . .
 
-# Pre-download EasyOCR models at build time
-RUN python -c "import easyocr; easyocr.Reader(['ta','en'], model_storage_directory='./models', gpu=False)" || true
+# Install CPU-only PyTorch FIRST
+RUN pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+
+# Then install easyocr
+RUN pip install --no-cache-dir easyocr
 
 # Create upload dir
 RUN mkdir -p app/static/uploads
