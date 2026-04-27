@@ -29,7 +29,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN python3 -c "import easyocr; easyocr.Reader(['ta', 'en'], gpu=False, model_storage_directory='/app/models', download_enabled=True)"
 
 # Bump this to force Railway to invalidate only the app-code layer (not torch/models).
-ARG CACHE_BUST=10
+ARG CACHE_BUST=11
 
 # Copy app
 COPY . .

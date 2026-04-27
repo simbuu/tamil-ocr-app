@@ -121,27 +121,43 @@ def _assign_column(cx: float, img_w: float) -> str:
 
 def extract_transactions_from_ocr(ocr_results: list) -> list:
     if not ocr_results:
+        logger.warning("OCR_PARSE: no raw results from EasyOCR — image may be blank or unreadable")
         return []
+
+    logger.info("OCR_PARSE: %d raw OCR items received", len(ocr_results))
 
     # Estimate image bounds from all bounding boxes
     all_xs = [pt[0] for item in ocr_results for pt in item["bbox"]]
     all_ys = [pt[1] for item in ocr_results for pt in item["bbox"]]
     img_w = max(all_xs) if all_xs else 1
     img_h = max(all_ys) if all_ys else 1
+    logger.info("OCR_PARSE: estimated image bounds w=%.0f h=%.0f", img_w, img_h)
 
     # Skip anything in the top 18 % of the image — that's the header zone
-    # (shop name, date line, printed column labels)
     header_cutoff = img_h * 0.18
+    logger.info("OCR_PARSE: header cutoff y=%.0f (18%% of %.0f)", header_cutoff, img_h)
 
     data_items = []
     for item in ocr_results:
         _, cy = _bbox_center(item["bbox"])
         if cy <= header_cutoff:
+            logger.debug("OCR_PARSE: HEADER_SKIP y=%.0f text=%r", cy, item["text"])
             continue
         data_items.append(item)
 
+    logger.info("OCR_PARSE: %d items remain after header skip (removed %d)",
+                len(data_items), len(ocr_results) - len(data_items))
+
     if not data_items:
+        logger.warning("OCR_PARSE: all items were in header zone — header_cutoff may be too large")
         return []
+
+    # Log all surviving items for full visibility
+    for item in sorted(data_items, key=lambda r: _bbox_center(r["bbox"])[1]):
+        cx, cy = _bbox_center(item["bbox"])
+        col = _assign_column(cx, img_w)
+        logger.info("OCR_PARSE: item  y=%.0f x=%.0f (%.1f%%) → col=%-6s  conf=%.2f  text=%r",
+                    cy, cx, 100 * cx / img_w, col, item["confidence"], item["text"])
 
     # Group items into horizontal rows by centre-Y proximity
     sorted_items = sorted(data_items, key=lambda r: _bbox_center(r["bbox"])[1])
@@ -149,7 +165,7 @@ def extract_transactions_from_ocr(ocr_results: list) -> list:
     rows = []
     current_row = []
     prev_y = None
-    ROW_THRESHOLD = 22  # pixels; generous to handle slight tilts
+    ROW_THRESHOLD = 22
 
     for item in sorted_items:
         _, cy = _bbox_center(item["bbox"])
@@ -164,9 +180,11 @@ def extract_transactions_from_ocr(ocr_results: list) -> list:
     if current_row:
         rows.append(current_row)
 
+    logger.info("OCR_PARSE: grouped into %d rows", len(rows))
+
     # For each row assign words to columns by X-position, then parse
     transactions = []
-    for row in rows:
+    for row_idx, row in enumerate(rows):
         cols: dict = {"sno": [], "name": [], "flower": [], "weight": [], "grade": []}
         confidences = []
         for item in row:
@@ -184,10 +202,20 @@ def extract_transactions_from_ocr(ocr_results: list) -> list:
         weight_text = " ".join(cols["weight"])
         grade_text  = " ".join(cols["grade"])
 
+        logger.info(
+            "OCR_PARSE: row %d → name=%r  flower=%r  weight=%r  grade=%r  conf=%.2f",
+            row_idx, name_text, flower_text, weight_text, grade_text, avg_conf,
+        )
+
         parsed = _parse_columns(name_text, flower_text, weight_text, grade_text, avg_conf)
         if parsed:
+            logger.info("OCR_PARSE: row %d → ACCEPTED: customer=%r flower=%r weight_kg=%.4f",
+                        row_idx, parsed["customer_name"], parsed["flower_type"], parsed["weight_kg"])
             transactions.append(parsed)
+        else:
+            logger.info("OCR_PARSE: row %d → REJECTED (no valid weight in weight column)", row_idx)
 
+    logger.info("OCR_PARSE: final transaction count = %d", len(transactions))
     return transactions
 
 
@@ -208,6 +236,7 @@ def _parse_columns(
     )
     weight_matches = weight_pattern.findall(weight_text)
     if not weight_matches:
+        logger.debug("OCR_PARSE: _parse_columns reject — no number found in weight_text=%r", weight_text)
         return None  # No number in the weight column → skip row
 
     raw_value, unit = weight_matches[-1]
@@ -220,6 +249,7 @@ def _parse_columns(
         weight_kg = raw_value  # assume kg / plain number
 
     if weight_kg <= 0 or weight_kg > 5000:
+        logger.debug("OCR_PARSE: _parse_columns reject — weight_kg=%.4f out of range", weight_kg)
         return None
 
     # ── Grade ─────────────────────────────────────────────────────────────────
