@@ -1,8 +1,5 @@
 FROM python:3.10-slim
 
-# Bump this to force Railway to invalidate its build cache
-ARG CACHE_BUST=6
-
 WORKDIR /app
 
 # System dependencies
@@ -30,6 +27,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Step 4: Pre-download EasyOCR models at BUILD time so the container is ready instantly.
 # Models are baked into the image — no CDN call needed at runtime.
 RUN python3 -c "import easyocr; easyocr.Reader(['ta', 'en'], gpu=False, model_storage_directory='/app/models', download_enabled=True)"
+
+# Bump this to force Railway to invalidate only the app-code layer (not torch/models).
+ARG CACHE_BUST=8
 
 # Copy app
 COPY . .
