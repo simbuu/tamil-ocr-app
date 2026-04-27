@@ -100,21 +100,22 @@ def _bbox_center(bbox):
 def _assign_column(cx: float, img_w: float) -> str:
     """
     Map a word's horizontal centre to a template column.
-    Template column proportions (approximate, matches the printed template):
-      S.No        : 0 – 10 %
-      CustomerName: 10 – 42 %
-      FlowerType  : 42 – 65 %
-      Weight      : 65 – 83 %
-      Grade       : 83 – 100 %
+    Calibrated from observed OCR output — weight values land at ~83% x,
+    so weight extends to 90% and grade takes the last 10%.
+      S.No        : 0  – 10 %
+      CustomerName: 10 – 40 %
+      FlowerType  : 40 – 65 %
+      Weight      : 65 – 90 %
+      Grade       : 90 – 100 %
     """
     ratio = cx / img_w if img_w else 0
     if ratio < 0.10:
         return "sno"
-    if ratio < 0.42:
+    if ratio < 0.40:
         return "name"
     if ratio < 0.65:
         return "flower"
-    if ratio < 0.83:
+    if ratio < 0.90:
         return "weight"
     return "grade"
 
@@ -133,15 +134,21 @@ def extract_transactions_from_ocr(ocr_results: list) -> list:
     img_h = max(all_ys) if all_ys else 1
     logger.info("OCR_PARSE: estimated image bounds w=%.0f h=%.0f", img_w, img_h)
 
-    # Skip anything in the top 18 % of the image — that's the header zone
+    # Skip the top 18 % (shop name, date, column labels)
+    # and the bottom 12 % (grade legend footer).
     header_cutoff = img_h * 0.18
-    logger.info("OCR_PARSE: header cutoff y=%.0f (18%% of %.0f)", header_cutoff, img_h)
+    footer_cutoff = img_h * 0.88
+    logger.info("OCR_PARSE: header cutoff y=%.0f (18%%), footer cutoff y=%.0f (88%%) of %.0f",
+                header_cutoff, footer_cutoff, img_h)
 
     data_items = []
     for item in ocr_results:
         _, cy = _bbox_center(item["bbox"])
         if cy <= header_cutoff:
             logger.debug("OCR_PARSE: HEADER_SKIP y=%.0f text=%r", cy, item["text"])
+            continue
+        if cy >= footer_cutoff:
+            logger.debug("OCR_PARSE: FOOTER_SKIP y=%.0f text=%r", cy, item["text"])
             continue
         data_items.append(item)
 
@@ -235,22 +242,31 @@ def _parse_columns(
         r"(\d+(?:\.\d+)?)\s*(kg|kgs?|grams?|gm|g)?", re.IGNORECASE
     )
     weight_matches = weight_pattern.findall(weight_text)
+    weight_kg = 0.0
     if not weight_matches:
-        logger.debug("OCR_PARSE: _parse_columns reject — no number found in weight_text=%r", weight_text)
-        return None  # No number in the weight column → skip row
-
-    raw_value, unit = weight_matches[-1]
-    raw_value = float(raw_value)
-    unit = (unit or "").lower().strip(".")
-
-    if unit in ("g", "gm", "gram", "grams"):
-        weight_kg = raw_value / 1000
+        # No number in weight column — check if row has any useful content at all.
+        # If name and flower are both empty, skip. Otherwise keep with weight=0
+        # so the user can fill in the weight manually.
+        has_name   = bool(name_text.strip())
+        has_flower = bool(flower_text.strip())
+        if not has_name and not has_flower:
+            logger.debug("OCR_PARSE: _parse_columns reject — no weight, no name, no flower")
+            return None
+        logger.debug("OCR_PARSE: _parse_columns — weight missing, keeping row for manual entry")
     else:
-        weight_kg = raw_value  # assume kg / plain number
+        raw_value, unit = weight_matches[-1]
+        raw_value = float(raw_value)
+        unit = (unit or "").lower().strip(".")
 
-    if weight_kg <= 0 or weight_kg > 5000:
-        logger.debug("OCR_PARSE: _parse_columns reject — weight_kg=%.4f out of range", weight_kg)
-        return None
+        if unit in ("kg", "kgs"):
+            weight_kg = raw_value
+        else:
+            # Template column is Weight(g) — default to grams when no unit written
+            weight_kg = raw_value / 1000
+
+        if weight_kg < 0 or weight_kg > 500:
+            logger.debug("OCR_PARSE: _parse_columns reject — weight_kg=%.4f out of range", weight_kg)
+            return None
 
     # ── Grade ─────────────────────────────────────────────────────────────────
     grade_match = re.search(r"\b([ABC])\b", grade_text, re.IGNORECASE)
