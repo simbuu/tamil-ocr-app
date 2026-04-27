@@ -17,7 +17,7 @@ logging.basicConfig(
 )
 
 from app.database import init_db
-from app.routes import transactions, market_rates, reports, ocr, admin
+from app.routes import transactions, market_rates, reports, ocr, admin, customers
 from app.services.market_rate_service import seed_default_rates
 
 
@@ -53,6 +53,7 @@ app.include_router(transactions.router, prefix="/api/transactions", tags=["Trans
 app.include_router(market_rates.router, prefix="/api/rates", tags=["Market Rates"])
 app.include_router(reports.router, prefix="/api/reports", tags=["Reports"])
 app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
+app.include_router(customers.router, prefix="/api/customers", tags=["Customers"])
 
 
 # ── Page routes ──────────────────────────────────────────────────────────────
@@ -85,6 +86,11 @@ async def reports_page(request: Request):
 @app.get("/admin")
 async def admin_page(request: Request):
     return templates.TemplateResponse("admin.html", {"request": request})
+
+
+@app.get("/customers")
+async def customers_page(request: Request):
+    return templates.TemplateResponse("customers.html", {"request": request})
 
 
 if __name__ == "__main__":

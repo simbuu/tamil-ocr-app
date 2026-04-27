@@ -1,0 +1,255 @@
+{% extends "base.html" %}
+{% block title %}Customers | Tamil OCR{% endblock %}
+
+{% block head %}
+<style>
+  .two-col { display: grid; grid-template-columns: 1fr 1.6fr; gap: 1.5rem; }
+  @media(max-width:768px){ .two-col{ grid-template-columns:1fr; } }
+
+  .customer-item {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: .75rem 1rem;
+    border-bottom: 1px solid var(--slate-100);
+    gap: 1rem;
+  }
+  .customer-item:last-child { border-bottom: none; }
+  .customer-name { font-weight: 600; color: var(--slate-900); }
+  .customer-tamil { font-size: 1.1rem; color: var(--green-700); margin-top: .15rem; }
+  .customer-phone { font-size: .8rem; color: var(--slate-500); }
+  .empty-state { text-align:center; padding: 3rem 1rem; color: var(--slate-500); }
+
+  .flower-ref {
+    background: var(--green-50);
+    border: 1px solid var(--green-200);
+    border-radius: 10px;
+    padding: 1rem 1.25rem;
+    margin-top: 1.5rem;
+  }
+  .flower-ref h3 { font-size: .95rem; font-weight: 700; color: var(--green-900); margin-bottom: .6rem; }
+  .flower-codes { display: grid; grid-template-columns: 1fr 1fr; gap: .25rem .75rem; font-size: .85rem; }
+  .flower-code-item { display: flex; gap: .4rem; align-items: baseline; }
+  .code-num { font-weight: 700; color: var(--green-700); min-width: 1.2rem; }
+  .code-ta  { color: var(--slate-700); }
+  .code-en  { color: var(--slate-400); font-size: .75rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>👥 Customer Directory</h1>
+  <p>Add customer names here — their names will be pre-printed on generated templates so they only need to fill in flower code, weight, and grade.</p>
+</div>
+
+<div id="alert" class="alert hidden"></div>
+
+<div class="two-col">
+  <!-- Add form -->
+  <div>
+    <div class="card">
+      <h2 class="card-title">Add Customer</h2>
+
+      <div class="mt-1">
+        <label for="name">Name (English / Transliterated) *</label>
+        <input class="input" id="name" placeholder="e.g. Kamala" />
+      </div>
+      <div class="mt-2">
+        <label for="name_tamil">Name in Tamil script</label>
+        <div style="display:flex;gap:.5rem;align-items:stretch">
+          <input class="input" id="name_tamil" placeholder="e.g. கமலா" style="font-size:1.1rem;flex:1" />
+          <button type="button" id="transliterate-btn" class="btn btn-outline btn-sm" title="Auto-convert English name to Tamil">
+            🔄 Convert
+          </button>
+        </div>
+        <p class="text-sm text-muted mt-1" id="transliterate-hint">
+          Type the English name above, then click Convert to get a Tamil suggestion — you can edit it before saving.
+        </p>
+      </div>
+      <div class="mt-2">
+        <label for="phone">Phone (optional)</label>
+        <input class="input" id="phone" placeholder="e.g. 9876543210" />
+      </div>
+      <div class="mt-2">
+        <button class="btn btn-primary" id="add-btn" style="width:100%;justify-content:center">
+          ➕ Add Customer
+        </button>
+      </div>
+    </div>
+
+    <!-- Flower code reference -->
+    <div class="flower-ref">
+      <h3>🌸 Flower Code Reference</h3>
+      <p class="text-sm text-muted" style="margin-bottom:.75rem">On printed templates, customers write just the code number in the Flower column instead of the full name. OCR reads numbers reliably.</p>
+      <div class="flower-codes" id="flower-codes-list"></div>
+    </div>
+
+    <div class="card mt-2" style="background:var(--green-950);color:var(--green-200)">
+      <h3 style="font-family:var(--font-display);color:var(--green-400);margin-bottom:.75rem">📋 How it works</h3>
+      <ol style="font-size:.88rem;line-height:1.8;padding-left:1.2rem">
+        <li>Add all your regular customers here with their Tamil name</li>
+        <li>Click <b>Download Template</b> — it generates a sheet with their names pre-printed</li>
+        <li>Customers just fill in the flower code number, weight in grams, and grade (A/B/C)</li>
+        <li>Upload the completed sheet — OCR only needs to read numbers, which it does perfectly</li>
+      </ol>
+    </div>
+  </div>
+
+  <!-- Customer list -->
+  <div>
+    <div class="card">
+      <div class="flex items-center justify-between mb-2">
+        <h2 class="card-title" style="margin:0">Customer List</h2>
+        <a href="/api/reports/template/pdf" target="_blank" class="btn btn-primary btn-sm">
+          🖨️ Download Template
+        </a>
+      </div>
+      <p class="text-sm text-muted mb-2" id="customer-count">Loading…</p>
+      <div id="customer-list">
+        <div class="empty-state">Loading customers…</div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Transliteration via Google Transliterate API ──────────────────────────
+document.getElementById('transliterate-btn').addEventListener('click', async () => {
+  const name = document.getElementById('name').value.trim();
+  if (!name) {
+    showAlert(alertEl, 'error', 'Enter the English name first, then click Convert.');
+    return;
+  }
+  const btn = document.getElementById('transliterate-btn');
+  btn.disabled = true; btn.textContent = '⏳';
+  const hint = document.getElementById('transliterate-hint');
+  try {
+    // Google Input Tools transliteration endpoint (no API key required for this usage)
+    const url = `https://inputtools.google.com/request?text=${encodeURIComponent(name)}&itc=ta-t-i0-und&num=5&cp=0&cs=1&ie=utf-8&oe=utf-8`;
+    const res = await fetch(url);
+    const json = await res.json();
+    // Response shape: ["SUCCESS", [["word", ["suggestion1","suggestion2",...]]]]
+    const suggestions = json?.[1]?.[0]?.[1] || [];
+    if (!suggestions.length) throw new Error('No suggestions returned');
+
+    const tamilInput = document.getElementById('name_tamil');
+    tamilInput.value = suggestions[0];  // fill best guess
+
+    // Show alternates if more than one
+    if (suggestions.length > 1) {
+      hint.innerHTML = `Suggestion applied. Alternatives: ${
+        suggestions.slice(1, 4).map((s, i) =>
+          `<button type="button" onclick="document.getElementById('name_tamil').value='${s}'"
+            style="margin:0 .2rem;padding:.1rem .35rem;border-radius:4px;border:1px solid var(--green-200);
+                   background:var(--green-50);cursor:pointer;font-size:.9rem">${s}</button>`
+        ).join('')
+      } — edit if needed before saving.`;
+    } else {
+      hint.textContent = 'Suggestion applied — edit if the spelling looks wrong for this person\'s name.';
+    }
+  } catch(e) {
+    hint.textContent = 'Could not auto-convert (check internet connection). Type the Tamil name manually.';
+  } finally {
+    btn.disabled = false; btn.textContent = '🔄 Convert';
+  }
+});
+
+const FLOWER_CODES = [
+  ["1",  "மல்லிகை",     "Jasmine"],
+  ["2",  "ரோஜா",        "Rose"],
+  ["3",  "சேவந்தி",     "Chrysanthemum"],
+  ["4",  "கனகாம்பரம்", "Crossandra"],
+  ["5",  "அரளி",        "Oleander"],
+  ["6",  "முல்லை",      "Mullai"],
+  ["7",  "தாமரை",       "Lotus"],
+  ["8",  "மரிகோல்டு",  "Marigold"],
+  ["9",  "சாமந்தி",     "Sevanthi"],
+  ["10", "நிலாம்பரி",  "Tuberose"],
+];
+
+// Render flower codes
+document.getElementById('flower-codes-list').innerHTML = FLOWER_CODES.map(([code, ta, en]) =>
+  `<div class="flower-code-item">
+    <span class="code-num">${code}</span>
+    <span class="code-ta">${ta}</span>
+    <span class="code-en">(${en})</span>
+  </div>`
+).join('');
+
+const alertEl = document.getElementById('alert');
+let customers = [];
+
+async function loadCustomers() {
+  try {
+    customers = await api('/api/customers/');
+    renderCustomers();
+  } catch(e) {
+    showAlert(alertEl, 'error', 'Failed to load customers: ' + e.message);
+  }
+}
+
+function renderCustomers() {
+  const el = document.getElementById('customer-list');
+  const count = document.getElementById('customer-count');
+  count.textContent = `${customers.length} customer${customers.length !== 1 ? 's' : ''} registered`;
+
+  if (!customers.length) {
+    el.innerHTML = '<div class="empty-state">No customers yet. Add your first customer on the left.</div>';
+    return;
+  }
+
+  el.innerHTML = customers.map(c => `
+    <div class="customer-item" data-id="${c.id}">
+      <div style="flex:1;min-width:0">
+        <div class="customer-name">${c.name}</div>
+        ${c.name_tamil ? `<div class="customer-tamil">${c.name_tamil}</div>` : ''}
+        ${c.phone ? `<div class="customer-phone">📞 ${c.phone}</div>` : ''}
+      </div>
+      <button class="btn btn-danger btn-sm" onclick="deleteCustomer(${c.id})">✕</button>
+    </div>
+  `).join('');
+}
+
+document.getElementById('add-btn').addEventListener('click', async () => {
+  const name       = document.getElementById('name').value.trim();
+  const name_tamil = document.getElementById('name_tamil').value.trim();
+  const phone      = document.getElementById('phone').value.trim();
+
+  if (!name) { showAlert(alertEl, 'error', 'Please enter a customer name.'); return; }
+
+  try {
+    const btn = document.getElementById('add-btn');
+    btn.disabled = true; btn.textContent = '⏳ Adding…';
+    const c = await api('/api/customers/', {
+      method: 'POST',
+      body: JSON.stringify({ name, name_tamil, phone }),
+    });
+    customers.unshift(c);
+    renderCustomers();
+    document.getElementById('name').value = '';
+    document.getElementById('name_tamil').value = '';
+    document.getElementById('phone').value = '';
+    showAlert(alertEl, 'success', `${name} added successfully.`);
+  } catch(e) {
+    showAlert(alertEl, 'error', e.message);
+  } finally {
+    const btn = document.getElementById('add-btn');
+    btn.disabled = false; btn.textContent = '➕ Add Customer';
+  }
+});
+
+window.deleteCustomer = async (id) => {
+  if (!confirm('Remove this customer from the directory?')) return;
+  try {
+    await api(`/api/customers/${id}`, { method: 'DELETE' });
+    customers = customers.filter(c => c.id !== id);
+    renderCustomers();
+    showAlert(alertEl, 'success', 'Customer removed.');
+  } catch(e) {
+    showAlert(alertEl, 'error', e.message);
+  }
+};
+
+loadCustomers();
+</script>
+{% endblock %}

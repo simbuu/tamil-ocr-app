@@ -55,9 +55,11 @@ def customer_report_pdf(name: str = Query(...), db: Session = Depends(get_db)):
 
 
 @router.get("/template/pdf")
-def transaction_template_pdf():
-    """Download a blank printable transaction template for handwriting."""
-    pdf_bytes = generate_transaction_template_pdf()
+def transaction_template_pdf(db: Session = Depends(get_db)):
+    """Download template — pre-filled with customer names if any exist in DB."""
+    from app.models.customer import Customer
+    customers = [c.to_dict() for c in db.query(Customer).order_by(Customer.name).all()]
+    pdf_bytes = generate_transaction_template_pdf(customers=customers)
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",

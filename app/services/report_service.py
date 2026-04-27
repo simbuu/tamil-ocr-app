@@ -15,7 +15,38 @@ from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 import io
+import os
 from datetime import date
+
+# ── Tamil font registration ────────────────────────────────────────────────────
+_TAMIL_FONT = "Helvetica"  # fallback
+_TAMIL_FONT_CANDIDATES = [
+    "/usr/share/fonts/truetype/lohit-tamil/Lohit-Tamil.ttf",
+    "/usr/share/fonts/truetype/lohit-taml/Lohit-Tamil.ttf",
+    "/usr/share/fonts/lohit-tamil/Lohit-Tamil.ttf",
+]
+for _path in _TAMIL_FONT_CANDIDATES:
+    if os.path.exists(_path):
+        try:
+            pdfmetrics.registerFont(TTFont("LohitTamil", _path))
+            _TAMIL_FONT = "LohitTamil"
+        except Exception:
+            pass
+        break
+
+# Flower code → Tamil + English mapping (must match ocr_service.FLOWER_CODE_MAP)
+FLOWER_CODE_LEGEND = [
+    ("1",  "மல்லிகை",     "Jasmine"),
+    ("2",  "ரோஜா",        "Rose"),
+    ("3",  "சேவந்தி",     "Chrysanthemum"),
+    ("4",  "கனகாம்பரம்", "Crossandra"),
+    ("5",  "அரளி",        "Oleander"),
+    ("6",  "முல்லை",      "Mullai"),
+    ("7",  "தாமரை",       "Lotus"),
+    ("8",  "மரிகோல்டு",  "Marigold"),
+    ("9",  "சாமந்தி",     "Sevanthi"),
+    ("10", "நிலாம்பரி",  "Tuberose"),
+]
 
 
 # ── Colour palette ─────────────────────────────────────────────────────────────
@@ -155,26 +186,32 @@ def generate_customer_report_pdf(report_data: dict) -> bytes:
     return buffer.getvalue()
 
 
-def generate_transaction_template_pdf() -> bytes:
+def generate_transaction_template_pdf(customers: list = None) -> bytes:
     """
-    Generate a blank printable transaction template that flower shops fill in
-    by hand. Designed so the OCR pipeline can parse it easily.
+    Generate a printable transaction template.
+    If customers list is provided, their Tamil names are pre-printed in the
+    Customer Name column — users only need to fill in flower code, weight & grade.
+    Flower types are replaced by numbered codes (see reference box on template).
     """
+    customers = customers or []
+    has_customers = bool(customers)
+
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer,
         pagesize=A4,
-        rightMargin=1.5 * cm,
-        leftMargin=1.5 * cm,
-        topMargin=1.5 * cm,
-        bottomMargin=1.5 * cm,
+        rightMargin=1.2 * cm,
+        leftMargin=1.2 * cm,
+        topMargin=1.2 * cm,
+        bottomMargin=1.2 * cm,
     )
 
     base = getSampleStyleSheet()
+    ta_font = _TAMIL_FONT  # LohitTamil if installed, else Helvetica
 
     style_shop = ParagraphStyle(
         "ShopName", parent=base["Normal"],
-        fontSize=18, fontName="Helvetica-Bold",
+        fontSize=16, fontName="Helvetica-Bold",
         textColor=PRIMARY, alignment=TA_LEFT,
     )
     style_date = ParagraphStyle(
@@ -183,113 +220,187 @@ def generate_transaction_template_pdf() -> bytes:
     )
     style_section = ParagraphStyle(
         "Sec", parent=base["Normal"],
-        fontSize=9, textColor=GREY, alignment=TA_CENTER,
+        fontSize=8.5, textColor=GREY, alignment=TA_CENTER,
     )
     style_legend_head = ParagraphStyle(
         "LegHead", parent=base["Normal"],
-        fontSize=10, fontName="Helvetica-Bold",
-        textColor=PRIMARY, spaceBefore=4,
+        fontSize=9, fontName="Helvetica-Bold",
+        textColor=PRIMARY, spaceBefore=2,
     )
     style_legend = ParagraphStyle(
         "Leg", parent=base["Normal"],
-        fontSize=9, textColor=DARK, leading=14,
+        fontSize=8.5, textColor=DARK, leading=13,
     )
     style_footer = ParagraphStyle(
         "Foot", parent=base["Normal"],
-        fontSize=7.5, textColor=GREY, alignment=TA_CENTER,
+        fontSize=7, textColor=GREY, alignment=TA_CENTER,
+    )
+    style_tamil_cell = ParagraphStyle(
+        "TamilCell", parent=base["Normal"],
+        fontSize=10, fontName=ta_font,
+        textColor=DARK, leading=13,
+    )
+    style_code_cell = ParagraphStyle(
+        "CodeCell", parent=base["Normal"],
+        fontSize=9, fontName="Helvetica",  # base is Helvetica; Tamil spans use inline font tag
+        textColor=colors.HexColor("#374151"), leading=12,
     )
 
     story = []
 
-    # ── Header row: shop name left, date right ──────────────────────────────
+    # ── Header ──────────────────────────────────────────────────────────────
     header_data = [[
-        Paragraph("🌸 &nbsp; Flower Shop Name: ___________________________", style_shop),
+        Paragraph("🌸 &nbsp; Flower Shop &nbsp;&nbsp; Date: ____________", style_shop),
         Paragraph("Date: __ __ / __ __ / __ __ __ __", style_date),
     ]]
-    header_table = Table(header_data, colWidths=[12 * cm, 5.5 * cm])
+    header_table = Table(header_data, colWidths=[12 * cm, 5.3 * cm])
     header_table.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "BOTTOM"),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
     ]))
     story.append(header_table)
-    story.append(HRFlowable(width="100%", thickness=2, color=PRIMARY, spaceAfter=10))
+    story.append(HRFlowable(width="100%", thickness=2, color=PRIMARY, spaceAfter=6))
 
-    # ── Instructions line ───────────────────────────────────────────────────
-    story.append(Paragraph(
-        "Fill clearly in block letters · Weight in GRAMS · Grade: A / B / C",
-        style_section,
-    ))
-    story.append(Spacer(1, 8))
+    # ── Flower code reference box ────────────────────────────────────────────
+    # Split into two columns of 5
+    left_codes  = FLOWER_CODE_LEGEND[:5]
+    right_codes = FLOWER_CODE_LEGEND[5:]
 
-    # ── Transaction table ───────────────────────────────────────────────────
-    NUM_ROWS = 20
-    col_headers = ["S.No", "Customer Name", "Flower Type", "Weight (g)", "Grade"]
-    col_widths  = [1.2*cm, 5.5*cm, 5.0*cm, 3.0*cm, 2.3*cm]
+    def _code_line(code, ta, en):
+        # Code number and English text use Helvetica; Tamil name uses Tamil font inline.
+        # We split into two paragraphs stacked, or use a hybrid approach:
+        # Wrap Tamil portion in its own font tag if Tamil font is registered.
+        if ta_font != "Helvetica":
+            tamil_span = f'<font name="{ta_font}">{ta}</font>'
+        else:
+            tamil_span = ta
+        return Paragraph(
+            f'<font name="Helvetica-Bold">{code}</font>'
+            f'<font name="Helvetica"> = </font>'
+            f'{tamil_span}'
+            f'<font name="Helvetica" color="#9CA3AF"> ({en})</font>',
+            style_code_cell,
+        )
 
+    code_rows = [[_code_line(*l), _code_line(*r)] for l, r in zip(left_codes, right_codes)]
+    code_table = Table(code_rows, colWidths=[8.6 * cm, 8.6 * cm])
+    code_table.setStyle(TableStyle([
+        ("TOPPADDING",    (0, 0), (-1, -1), 2),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 4),
+    ]))
+
+    ref_outer = Table(
+        [[Paragraph("🌸 Flower Code Reference — write the number in the Flower Code column", style_legend_head)],
+         [code_table]],
+        colWidths=[17.7 * cm],
+    )
+    ref_outer.setStyle(TableStyle([
+        ("BACKGROUND",    (0, 0), (-1, -1), colors.HexColor("#F0FDF4")),
+        ("BOX",           (0, 0), (-1, -1), 0.8, ACCENT),
+        ("TOPPADDING",    (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 6),
+    ]))
+    story.append(ref_outer)
+    story.append(Spacer(1, 6))
+
+    # ── Instructions ────────────────────────────────────────────────────────
+    instr = (
+        "Customer names are pre-filled · Write Flower Code (number) · Weight in GRAMS · Grade A / B / C"
+        if has_customers else
+        "Fill clearly · Flower Code = number from reference above · Weight in GRAMS · Grade A / B / C"
+    )
+    story.append(Paragraph(instr, style_section))
+    story.append(Spacer(1, 5))
+
+    # ── Transaction table ────────────────────────────────────────────────────
+    col_headers = ["S.No", "Customer Name", "Flower\nCode", "Weight\n(g)", "Grade"]
+    col_widths  = [1.0*cm, 7.0*cm, 2.8*cm, 2.8*cm, 2.0*cm]  # narrower flower col
+
+    NUM_ROWS = max(len(customers), 20)
     rows = [col_headers]
-    for i in range(1, NUM_ROWS + 1):
+    for i, c in enumerate(customers):
+        name_tamil = (c.get("name_tamil") or "").strip()
+        name_en    = (c.get("name") or "").strip()
+        # Use Tamil font only when the name actually contains Tamil characters.
+        # Fall back to Helvetica for English/transliterated names so Latin glyphs render correctly.
+        is_tamil = bool(name_tamil)
+        display  = name_tamil if is_tamil else name_en
+        cell_style = style_tamil_cell if is_tamil else ParagraphStyle(
+            f"NameEn{i}", parent=style_tamil_cell, fontName="Helvetica",
+        )
+        rows.append([
+            str(i + 1),
+            Paragraph(display, cell_style),
+            "",
+            "",
+            "",
+        ])
+    # Pad with blank rows if fewer than 20 customers
+    for i in range(len(customers) + 1, NUM_ROWS + 1):
         rows.append([str(i), "", "", "", ""])
 
     table = Table(rows, colWidths=col_widths, repeatRows=1)
-    table.setStyle(TableStyle([
+    ts = [
         # Header
         ("BACKGROUND",    (0, 0), (-1, 0), PRIMARY),
         ("TEXTCOLOR",     (0, 0), (-1, 0), WHITE),
         ("FONTNAME",      (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE",      (0, 0), (-1, 0), 10),
+        ("FONTSIZE",      (0, 0), (-1, 0), 9),
         ("ALIGN",         (0, 0), (-1, 0), "CENTER"),
+        ("VALIGN",        (0, 0), (-1, 0), "MIDDLE"),
         # Data rows
         ("FONTSIZE",      (0, 1), (-1, -1), 9),
-        ("FONTNAME",      (0, 1), (0, -1), "Helvetica-Bold"),   # S.No bold
+        ("FONTNAME",      (0, 1), (0, -1), "Helvetica-Bold"),
         ("TEXTCOLOR",     (0, 1), (0, -1), GREY),
-        ("ALIGN",         (0, 0), (0, -1), "CENTER"),           # S.No centered
-        ("ALIGN",         (4, 0), (4, -1), "CENTER"),           # Grade centered
+        ("ALIGN",         (0, 0), (0, -1), "CENTER"),
+        ("ALIGN",         (2, 0), (4, -1), "CENTER"),
+        ("VALIGN",        (0, 1), (-1, -1), "MIDDLE"),
         ("ROWBACKGROUNDS",(0, 1), (-1, -1), [WHITE, colors.HexColor("#F0FDF4")]),
         ("GRID",          (0, 0), (-1, -1), 0.6, colors.HexColor("#D1D5DB")),
-        ("TOPPADDING",    (0, 0), (-1, -1), 7),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
-        ("LEFTPADDING",   (0, 0), (-1, -1), 5),
-    ]))
+        ("TOPPADDING",    (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 4),
+    ]
+    # Highlight pre-filled name cells lightly
+    if has_customers:
+        ts.append(("BACKGROUND", (1, 1), (1, len(customers)), colors.HexColor("#ECFDF5")))
+        ts.append(("FONTNAME",   (1, 1), (1, len(customers)), ta_font))
+
+    table.setStyle(TableStyle(ts))
     story.append(table)
-    story.append(Spacer(1, 14))
+    story.append(Spacer(1, 8))
 
-    # ── Grade legend ────────────────────────────────────────────────────────
-    story.append(HRFlowable(width="100%", thickness=1, color=LIGHT, spaceAfter=6))
-
-    legend_data = [[
-        Paragraph("Grade Reference:", style_legend_head),
-        Paragraph("<b>A</b> = 1st Category &nbsp;&nbsp; (Premium — fresh, full bloom, no damage)", style_legend),
-        Paragraph("<b>B</b> = 2nd Category &nbsp; (Good — slight imperfections, day-old)", style_legend),
-        Paragraph("<b>C</b> = 3rd Category &nbsp; (Standard — minor damage, older stock)", style_legend),
-    ]]
+    # ── Grade legend ─────────────────────────────────────────────────────────
+    story.append(HRFlowable(width="100%", thickness=1, color=LIGHT, spaceAfter=4))
     legend_table = Table(
         [[
-            Paragraph("Grade Reference:", style_legend_head),
+            Paragraph("Grade:", style_legend_head),
             Paragraph(
-                "<b>A</b> = 1st Category &nbsp;&nbsp; Premium — fresh, full bloom, no damage<br/>"
-                "<b>B</b> = 2nd Category &nbsp; Good — slight imperfections, day-old stock<br/>"
-                "<b>C</b> = 3rd Category &nbsp; Standard — minor damage or older stock",
+                "<b>A</b> = 1st Category — Premium (fresh, full bloom)&nbsp;&nbsp;&nbsp;"
+                "<b>B</b> = 2nd Category — Good (slight imperfections)&nbsp;&nbsp;&nbsp;"
+                "<b>C</b> = 3rd Category — Standard (older / minor damage)",
                 style_legend,
             ),
         ]],
-        colWidths=[3.5 * cm, 14 * cm],
+        colWidths=[1.8 * cm, 15.9 * cm],
     )
     legend_table.setStyle(TableStyle([
         ("VALIGN",        (0, 0), (-1, -1), "TOP"),
-        ("TOPPADDING",    (0, 0), (-1, -1), 4),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING",    (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
         ("LEFTPADDING",   (0, 0), (-1, -1), 0),
         ("BACKGROUND",    (0, 0), (-1, -1), colors.HexColor("#F0FDF4")),
         ("BOX",           (0, 0), (-1, -1), 0.6, LIGHT),
-        ("ROUNDEDCORNERS", [4]),
     ]))
     story.append(legend_table)
-    story.append(Spacer(1, 10))
+    story.append(Spacer(1, 6))
 
-    # ── Footer ───────────────────────────────────────────────────────────────
+    # ── Footer ──────────────────────────────────────────────────────────────
     story.append(HRFlowable(width="100%", thickness=0.5, color=LIGHT))
     story.append(Paragraph(
-        "Tamil OCR Flower Transaction System · Scan this completed form to digitise records automatically",
+        "Tamil OCR Flower Transaction System · Scan completed form to digitise records automatically",
         style_footer,
     ))
 

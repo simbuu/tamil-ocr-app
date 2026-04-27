@@ -60,6 +60,20 @@ def preprocess_image(image_bytes: bytes) -> np.ndarray:
     return binary
 
 
+# Numbered flower codes — must match report_service.FLOWER_CODE_LEGEND
+FLOWER_CODE_MAP = {
+    "1":  "Jasmine",        # மல்லிகை
+    "2":  "Rose",           # ரோஜா
+    "3":  "Chrysanthemum",  # சேவந்தி
+    "4":  "Crossandra",     # கனகாம்பரம்
+    "5":  "Oleander",       # அரளி
+    "6":  "Mullai",         # முல்லை
+    "7":  "Lotus",          # தாமரை
+    "8":  "Marigold",       # மரிகோல்டு
+    "9":  "Sevanthi",       # சாமந்தி
+    "10": "Tuberose",       # நிலாம்பரி
+}
+
 FLOWER_KEYWORDS_EN = [
     "rose", "jasmine", "marigold", "lotus", "lily",
     "chrysanthemum", "tuberose", "crossandra", "kanakambaram",
@@ -276,14 +290,21 @@ def _parse_columns(
     grade = grade_match.group(1).upper() if grade_match else None
 
     # ── Flower type ───────────────────────────────────────────────────────────
-    flower_lower = flower_text.lower()
-    flower_type_en = next(
-        (f.title() for f in FLOWER_KEYWORDS_EN if f in flower_lower), None
-    )
-    flower_type_ta = next(
-        (f for f in FLOWER_KEYWORDS_TA if f in flower_text), None
-    )
-    flower_type = flower_type_en or flower_type_ta or (flower_text.strip() or "Unknown")
+    # First check for a numeric flower code (1–10) — these come from the new
+    # pre-printed template and are read by OCR very reliably.
+    flower_code = flower_text.strip().lstrip("0")  # strip leading zeros just in case
+    flower_type_ta = None
+    if flower_code in FLOWER_CODE_MAP:
+        flower_type = FLOWER_CODE_MAP[flower_code]
+    else:
+        flower_lower = flower_text.lower()
+        flower_type_en = next(
+            (f.title() for f in FLOWER_KEYWORDS_EN if f in flower_lower), None
+        )
+        flower_type_ta = next(
+            (f for f in FLOWER_KEYWORDS_TA if f in flower_text), None
+        )
+        flower_type = flower_type_en or flower_type_ta or (flower_text.strip() or "Unknown")
 
     # ── Customer name ─────────────────────────────────────────────────────────
     tamil_words = [w for w in re.findall(r"[஀-௿]+", name_text) if len(w) >= 2]
