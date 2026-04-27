@@ -28,13 +28,15 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Models are baked into the image — no CDN call needed at runtime.
 RUN python3 -c "import easyocr; easyocr.Reader(['ta', 'en'], gpu=False, model_storage_directory='/app/models', download_enabled=True)"
 
-# Step 5: Tamil font for PDF template generation (small layer, cached separately).
+# Step 5: Tamil fonts for PDF template generation (cached separately from app code).
+# fonts-noto-core includes Noto Sans Tamil — same family Google uses on the web.
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    fonts-noto-core \
     fonts-lohit-taml \
     && rm -rf /var/lib/apt/lists/*
 
 # Bump this to force Railway to invalidate only the app-code layer (not torch/models).
-ARG CACHE_BUST=17
+ARG CACHE_BUST=21
 
 # Copy app
 COPY . .

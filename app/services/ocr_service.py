@@ -123,7 +123,7 @@ def _assign_column(cx: float, img_w: float) -> str:
       Grade       : 90 – 100 %
     """
     ratio = cx / img_w if img_w else 0
-    if ratio < 0.10:
+    if ratio < 0.17:   # wider S.No zone — printed numbers 10-20 land at ~15-16%
         return "sno"
     if ratio < 0.40:
         return "name"
@@ -148,11 +148,12 @@ def extract_transactions_from_ocr(ocr_results: list) -> list:
     img_h = max(all_ys) if all_ys else 1
     logger.info("OCR_PARSE: estimated image bounds w=%.0f h=%.0f", img_w, img_h)
 
-    # Skip the top 18 % (shop name, date, column labels)
-    # and the bottom 12 % (grade legend footer).
-    header_cutoff = img_h * 0.18
+    # Skip the top 35 % — covers shop name, date, flower code strip, HR divider,
+    # instructions line, and the column header row of the table.
+    # Skip the bottom 12 % — grade legend footer.
+    header_cutoff = img_h * 0.35
     footer_cutoff = img_h * 0.88
-    logger.info("OCR_PARSE: header cutoff y=%.0f (18%%), footer cutoff y=%.0f (88%%) of %.0f",
+    logger.info("OCR_PARSE: header cutoff y=%.0f (35%%), footer cutoff y=%.0f (88%%) of %.0f",
                 header_cutoff, footer_cutoff, img_h)
 
     data_items = []

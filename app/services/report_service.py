@@ -19,20 +19,31 @@ import os
 from datetime import date
 
 # ── Tamil font registration ────────────────────────────────────────────────────
-_TAMIL_FONT = "Helvetica"  # fallback
+# Preference order: Noto Sans Tamil (Google, best quality) → Lohit Tamil → fallback
+_TAMIL_FONT = "Helvetica"  # fallback if nothing is installed
+
 _TAMIL_FONT_CANDIDATES = [
-    "/usr/share/fonts/truetype/lohit-tamil/Lohit-Tamil.ttf",
-    "/usr/share/fonts/truetype/lohit-taml/Lohit-Tamil.ttf",
-    "/usr/share/fonts/lohit-tamil/Lohit-Tamil.ttf",
+    # Noto Sans Tamil — same family used by Google on the web
+    ("/usr/share/fonts/truetype/noto/NotoSansTamil-Regular.ttf",  "NotoSansTamil"),
+    ("/usr/share/fonts/opentype/noto/NotoSansTamil-Regular.otf",  "NotoSansTamil"),
+    ("/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",       "NotoSansTamil"),
+    # Lohit Tamil — fallback
+    ("/usr/share/fonts/truetype/lohit-tamil/Lohit-Tamil.ttf",     "LohitTamil"),
+    ("/usr/share/fonts/truetype/lohit-taml/Lohit-Tamil.ttf",      "LohitTamil"),
 ]
-for _path in _TAMIL_FONT_CANDIDATES:
+
+for _path, _font_name in _TAMIL_FONT_CANDIDATES:
     if os.path.exists(_path):
         try:
-            pdfmetrics.registerFont(TTFont("LohitTamil", _path))
-            _TAMIL_FONT = "LohitTamil"
+            pdfmetrics.registerFont(TTFont(_font_name, _path))
+            _TAMIL_FONT = _font_name
+            break
         except Exception:
-            pass
-        break
+            continue
+
+# Log which font was selected (visible in Railway logs at startup)
+import logging as _logging
+_logging.getLogger(__name__).info("PDF Tamil font: %s", _TAMIL_FONT)
 
 # Flower code → Tamil + English mapping (must match ocr_service.FLOWER_CODE_MAP)
 FLOWER_CODE_LEGEND = [
@@ -248,7 +259,7 @@ def generate_transaction_template_pdf(customers: list = None) -> bytes:
 
     story = []
 
-    # ── Header ──────────────────────────────────────────────────────────────
+    # ── Header: shop name + date ─────────────────────────────────────────────
     header_data = [[
         Paragraph("🌸 &nbsp; Flower Shop &nbsp;&nbsp; Date: ____________", style_shop),
         Paragraph("Date: __ __ / __ __ / __ __ __ __", style_date),
@@ -259,51 +270,41 @@ def generate_transaction_template_pdf(customers: list = None) -> bytes:
         ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
     ]))
     story.append(header_table)
-    story.append(HRFlowable(width="100%", thickness=2, color=PRIMARY, spaceAfter=6))
 
-    # ── Flower code reference box ────────────────────────────────────────────
-    # Split into two columns of 5
-    left_codes  = FLOWER_CODE_LEGEND[:5]
-    right_codes = FLOWER_CODE_LEGEND[5:]
-
-    def _code_line(code, ta, en):
-        # Code number and English text use Helvetica; Tamil name uses Tamil font inline.
-        # We split into two paragraphs stacked, or use a hybrid approach:
-        # Wrap Tamil portion in its own font tag if Tamil font is registered.
+    # ── Flower code reference — INSIDE the header zone (above the HR rule) ──
+    # Printed as a single compact strip so OCR header-cutoff discards it entirely.
+    # Two rows of 5 codes each, rendered as plain text with Tamil font inline.
+    def _code_token(code, ta, en):
         if ta_font != "Helvetica":
-            tamil_span = f'<font name="{ta_font}">{ta}</font>'
+            ta_span = f'<font name="{ta_font}">{ta}</font>'
         else:
-            tamil_span = ta
-        return Paragraph(
+            ta_span = ta
+        return (
             f'<font name="Helvetica-Bold">{code}</font>'
-            f'<font name="Helvetica"> = </font>'
-            f'{tamil_span}'
-            f'<font name="Helvetica" color="#9CA3AF"> ({en})</font>',
-            style_code_cell,
+            f'<font name="Helvetica">={ta_span} </font>'
         )
 
-    code_rows = [[_code_line(*l), _code_line(*r)] for l, r in zip(left_codes, right_codes)]
-    code_table = Table(code_rows, colWidths=[8.6 * cm, 8.6 * cm])
-    code_table.setStyle(TableStyle([
-        ("TOPPADDING",    (0, 0), (-1, -1), 2),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
-        ("LEFTPADDING",   (0, 0), (-1, -1), 4),
-    ]))
+    row1 = "  ".join(_code_token(*c) for c in FLOWER_CODE_LEGEND[:5])
+    row2 = "  ".join(_code_token(*c) for c in FLOWER_CODE_LEGEND[5:])
 
-    ref_outer = Table(
-        [[Paragraph("🌸 Flower Code Reference — write the number in the Flower Code column", style_legend_head)],
-         [code_table]],
-        colWidths=[17.7 * cm],
+    style_ref_strip = ParagraphStyle(
+        "RefStrip", parent=base["Normal"],
+        fontSize=8, fontName="Helvetica",
+        textColor=colors.HexColor("#374151"),
+        leading=11, spaceBefore=4, spaceAfter=2,
+        backColor=colors.HexColor("#F0FDF4"),
     )
-    ref_outer.setStyle(TableStyle([
-        ("BACKGROUND",    (0, 0), (-1, -1), colors.HexColor("#F0FDF4")),
-        ("BOX",           (0, 0), (-1, -1), 0.8, ACCENT),
-        ("TOPPADDING",    (0, 0), (-1, -1), 5),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-        ("LEFTPADDING",   (0, 0), (-1, -1), 6),
-    ]))
-    story.append(ref_outer)
-    story.append(Spacer(1, 6))
+    story.append(Paragraph(
+        '<font name="Helvetica-Bold" color="#15803d">Flower codes: </font>' + row1,
+        style_ref_strip,
+    ))
+    story.append(Paragraph(
+        '<font name="Helvetica-Bold" color="#15803d">               </font>' + row2,
+        style_ref_strip,
+    ))
+
+    # ── HR divider — everything above this is the header zone for OCR ────────
+    story.append(HRFlowable(width="100%", thickness=2, color=PRIMARY, spaceBefore=4, spaceAfter=4))
 
     # ── Instructions ────────────────────────────────────────────────────────
     instr = (
@@ -312,7 +313,7 @@ def generate_transaction_template_pdf(customers: list = None) -> bytes:
         "Fill clearly · Flower Code = number from reference above · Weight in GRAMS · Grade A / B / C"
     )
     story.append(Paragraph(instr, style_section))
-    story.append(Spacer(1, 5))
+    story.append(Spacer(1, 4))
 
     # ── Transaction table ────────────────────────────────────────────────────
     col_headers = ["S.No", "Customer Name", "Flower\nCode", "Weight\n(g)", "Grade"]
