@@ -1,6 +1,7 @@
 python-multipart==0.0.9
 sqlalchemy==2.0.35
 alembic==1.13.3
+psycopg2-binary==2.9.9
 easyocr==1.7.1
 Pillow==10.4.0
 numpy==1.26.4
