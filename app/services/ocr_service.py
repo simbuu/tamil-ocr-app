@@ -115,14 +115,26 @@ def extract_transactions_from_ocr(ocr_results: list[dict]) -> list[dict]:
 
 
 def _parse_row(text: str, confidence: float) -> Optional[dict]:
+    # Match weight with optional unit — supports kg, g/gm/grams and Tamil equivalents
     weight_pattern = re.compile(
-        r"(\d+(?:\.\d+)?)\s*(?:kg|கி\.?கி\.?|கிலோ|kgs?)?", re.IGNORECASE
+        r"(\d+(?:\.\d+)?)\s*"
+        r"(kg|kgs?|கி\.?கி\.?|கிலோ|grams?|gm|g|கிராம்)?",
+        re.IGNORECASE,
     )
     weight_matches = weight_pattern.findall(text)
     if not weight_matches:
         return None
 
-    weight_kg = float(weight_matches[-1])
+    raw_value, unit = weight_matches[-1]
+    raw_value = float(raw_value)
+    unit = (unit or "").lower().strip(".")
+
+    # Convert grams → kg
+    if unit in ("g", "gm", "gram", "grams", "கிராம்"):
+        weight_kg = raw_value / 1000
+    else:
+        weight_kg = raw_value  # already kg (or unitless — assume kg)
+
     if weight_kg <= 0 or weight_kg > 5000:
         return None
 

@@ -14,6 +14,7 @@ from app.services.transaction_service import (
 )
 from app.services.report_service import (
     generate_customer_report_pdf, generate_monthly_report_pdf,
+    generate_transaction_template_pdf,
 )
 
 router = APIRouter()
@@ -50,6 +51,17 @@ def customer_report_pdf(name: str = Query(...), db: Session = Depends(get_db)):
         content=pdf_bytes,
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="customer_{name}.pdf"'},
+    )
+
+
+@router.get("/template/pdf")
+def transaction_template_pdf():
+    """Download a blank printable transaction template for handwriting."""
+    pdf_bytes = generate_transaction_template_pdf()
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="flower_transaction_template.pdf"'},
     )
 
 
