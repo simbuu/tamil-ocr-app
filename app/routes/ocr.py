@@ -6,7 +6,8 @@ Now logs every OCR session and tracks user corrections vs OCR output.
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, Form
 from sqlalchemy.orm import Session
 from datetime import date
-import uuid, os, time
+import uuid, os, time, asyncio
+from functools import partial
 from typing import Optional
 
 from app.database import get_db
@@ -55,9 +56,18 @@ async def upload_and_ocr(
         except ValueError:
             pass
 
-    # Run OCR (with timing)
+    # Run OCR in a thread pool so it doesn't block the asyncio event loop.
+    # EasyOCR is CPU-bound / blocking — calling it directly in an async handler
+    # would freeze the entire server until it finishes.
     t0 = time.perf_counter()
-    ocr_result = run_ocr(contents)
+    loop = asyncio.get_event_loop()
+    try:
+        ocr_result = await asyncio.wait_for(
+            loop.run_in_executor(None, partial(run_ocr, contents)),
+            timeout=120,  # 2-minute hard cap; returns error instead of hanging forever
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(504, "OCR timed out after 120 s. Try a smaller or clearer image.")
     total_ms = int((time.perf_counter() - t0) * 1000)
 
     # Always log the session, even if OCR failed

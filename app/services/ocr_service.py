@@ -39,11 +39,17 @@ def get_image_dimensions(image_bytes: bytes):
 
 def preprocess_image(image_bytes: bytes) -> np.ndarray:
     img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-    min_dim = 1200
     w, h = img.size
-    if max(w, h) < min_dim:
-        scale = min_dim / max(w, h)
+    min_dim = 1200
+    max_dim = 1800  # cap: larger images don't improve OCR but cost a lot of CPU time
+    longest = max(w, h)
+    if longest < min_dim:
+        scale = min_dim / longest
         img = img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
+    elif longest > max_dim:
+        scale = max_dim / longest
+        img = img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
+    w, h = img.size
     gray = img.convert("L")
     gray = ImageEnhance.Contrast(gray).enhance(2.0)
     gray = ImageEnhance.Sharpness(gray).enhance(2.5)
@@ -84,67 +90,125 @@ FLOWER_KEYWORDS_TA = [
 ]
 
 
+def _bbox_center(bbox):
+    """Return (cx, cy) centre of a bounding box."""
+    xs = [pt[0] for pt in bbox]
+    ys = [pt[1] for pt in bbox]
+    return sum(xs) / len(xs), sum(ys) / len(ys)
+
+
+def _assign_column(cx: float, img_w: float) -> str:
+    """
+    Map a word's horizontal centre to a template column.
+    Template column proportions (approximate, matches the printed template):
+      S.No        : 0 – 10 %
+      CustomerName: 10 – 42 %
+      FlowerType  : 42 – 65 %
+      Weight      : 65 – 83 %
+      Grade       : 83 – 100 %
+    """
+    ratio = cx / img_w if img_w else 0
+    if ratio < 0.10:
+        return "sno"
+    if ratio < 0.42:
+        return "name"
+    if ratio < 0.65:
+        return "flower"
+    if ratio < 0.83:
+        return "weight"
+    return "grade"
+
+
 def extract_transactions_from_ocr(ocr_results: list) -> list:
     if not ocr_results:
         return []
 
-    sorted_results = sorted(ocr_results, key=lambda r: (r["bbox"][0][1], r["bbox"][0][0]))
+    # Estimate image bounds from all bounding boxes
+    all_xs = [pt[0] for item in ocr_results for pt in item["bbox"]]
+    all_ys = [pt[1] for item in ocr_results for pt in item["bbox"]]
+    img_w = max(all_xs) if all_xs else 1
+    img_h = max(all_ys) if all_ys else 1
+
+    # Skip anything in the top 18 % of the image — that's the header zone
+    # (shop name, date line, printed column labels)
+    header_cutoff = img_h * 0.18
+
+    data_items = []
+    for item in ocr_results:
+        _, cy = _bbox_center(item["bbox"])
+        if cy <= header_cutoff:
+            continue
+        data_items.append(item)
+
+    if not data_items:
+        return []
+
+    # Group items into horizontal rows by centre-Y proximity
+    sorted_items = sorted(data_items, key=lambda r: _bbox_center(r["bbox"])[1])
 
     rows = []
     current_row = []
     prev_y = None
-    ROW_THRESHOLD = 20
+    ROW_THRESHOLD = 22  # pixels; generous to handle slight tilts
 
-    for item in sorted_results:
-        ys = [pt[1] for pt in item["bbox"]]
-        y = sum(ys) / len(ys)
-        if prev_y is None or abs(y - prev_y) <= ROW_THRESHOLD:
+    for item in sorted_items:
+        _, cy = _bbox_center(item["bbox"])
+        if prev_y is None or abs(cy - prev_y) <= ROW_THRESHOLD:
             current_row.append(item)
         else:
             if current_row:
                 rows.append(current_row)
             current_row = [item]
-        prev_y = y
+        prev_y = cy
 
     if current_row:
         rows.append(current_row)
 
+    # For each row assign words to columns by X-position, then parse
     transactions = []
     for row in rows:
-        row_sorted = sorted(row, key=lambda r: r["bbox"][0][0])
-        row_texts = [r["text"].strip() for r in row_sorted if r["text"].strip()]
-        row_text = " ".join(row_texts)
-        avg_conf = sum(r["confidence"] for r in row_sorted) / len(row_sorted)
+        cols: dict = {"sno": [], "name": [], "flower": [], "weight": [], "grade": []}
+        confidences = []
+        for item in row:
+            cx, _ = _bbox_center(item["bbox"])
+            col = _assign_column(cx, img_w)
+            text = item["text"].strip()
+            if text:
+                cols[col].append(text)
+            confidences.append(item["confidence"])
 
-        parsed = _parse_row(row_text, avg_conf)
-        if not parsed:
-            continue
-        # Drop rows that look like a bare printed serial number on an empty template line:
-        # weight is a small whole number (1-30), no customer name, no flower, no grade.
-        # Real filled rows either have a non-integer weight, a name, a flower, or a grade.
-        wkg = parsed["weight_kg"]
-        is_serial_only = (
-            parsed["customer_name"] == "Unknown"
-            and parsed["flower_type"] == "Unknown"
-            and parsed["grade"] is None
-            and wkg == int(wkg)   # whole number
-            and 1 <= wkg <= 30    # plausible S.No range
-        )
-        if is_serial_only:
-            continue
-        transactions.append(parsed)
+        avg_conf = sum(confidences) / len(confidences)
+
+        name_text   = " ".join(cols["name"])
+        flower_text = " ".join(cols["flower"])
+        weight_text = " ".join(cols["weight"])
+        grade_text  = " ".join(cols["grade"])
+
+        parsed = _parse_columns(name_text, flower_text, weight_text, grade_text, avg_conf)
+        if parsed:
+            transactions.append(parsed)
 
     return transactions
 
 
-def _parse_row(text: str, confidence: float) -> Optional[dict]:
+def _parse_columns(
+    name_text: str,
+    flower_text: str,
+    weight_text: str,
+    grade_text: str,
+    confidence: float,
+) -> Optional[dict]:
+    """
+    Parse a single data row using pre-split column text.
+    Each argument contains only the OCR words that fell inside that column.
+    """
+    # ── Weight ────────────────────────────────────────────────────────────────
     weight_pattern = re.compile(
-        r"(\d+(?:\.\d+)?)\s*(kg|kgs?|grams?|gm|g)?"
-        , re.IGNORECASE,
+        r"(\d+(?:\.\d+)?)\s*(kg|kgs?|grams?|gm|g)?", re.IGNORECASE
     )
-    weight_matches = weight_pattern.findall(text)
+    weight_matches = weight_pattern.findall(weight_text)
     if not weight_matches:
-        return None
+        return None  # No number in the weight column → skip row
 
     raw_value, unit = weight_matches[-1]
     raw_value = float(raw_value)
@@ -153,43 +217,40 @@ def _parse_row(text: str, confidence: float) -> Optional[dict]:
     if unit in ("g", "gm", "gram", "grams"):
         weight_kg = raw_value / 1000
     else:
-        weight_kg = raw_value
+        weight_kg = raw_value  # assume kg / plain number
 
     if weight_kg <= 0 or weight_kg > 5000:
         return None
 
-    flower_type_en = None
-    flower_type_ta = None
-    text_lower = text.lower()
-    for flower in FLOWER_KEYWORDS_EN:
-        if flower in text_lower:
-            flower_type_en = flower.title()
-            break
-    for flower in FLOWER_KEYWORDS_TA:
-        if flower in text:
-            flower_type_ta = flower
-            break
-    flower_type = flower_type_en or flower_type_ta or "Unknown"
-
-    clean = re.sub(weight_pattern, "", text)
-    for f in FLOWER_KEYWORDS_EN + FLOWER_KEYWORDS_TA:
-        clean = clean.replace(f, "").replace(f.lower(), "")
-    clean = re.sub(r"[^\w\s]", " ", clean).strip()
-    clean = re.sub(r"\s+", " ", clean)
-
-    grade_match = re.search(r"\b([ABC])\b", text, re.IGNORECASE)
+    # ── Grade ─────────────────────────────────────────────────────────────────
+    grade_match = re.search(r"\b([ABC])\b", grade_text, re.IGNORECASE)
+    # Also check weight column (sometimes written adjacent)
+    if not grade_match:
+        grade_match = re.search(r"\b([ABC])\b", weight_text, re.IGNORECASE)
     grade = grade_match.group(1).upper() if grade_match else None
 
-    tamil_words = [w for w in re.findall(r"[஀-௿]+", clean) if len(w) >= 2]
+    # ── Flower type ───────────────────────────────────────────────────────────
+    flower_lower = flower_text.lower()
+    flower_type_en = next(
+        (f.title() for f in FLOWER_KEYWORDS_EN if f in flower_lower), None
+    )
+    flower_type_ta = next(
+        (f for f in FLOWER_KEYWORDS_TA if f in flower_text), None
+    )
+    flower_type = flower_type_en or flower_type_ta or (flower_text.strip() or "Unknown")
+
+    # ── Customer name ─────────────────────────────────────────────────────────
+    tamil_words = [w for w in re.findall(r"[஀-௿]+", name_text) if len(w) >= 2]
     latin_words = [
-        w for w in re.findall(r"[A-Za-z]+", clean)
+        w for w in re.findall(r"[A-Za-z]+", name_text)
         if w.upper() not in ("A", "B", "C", "KG", "KGS", "GM", "G", "GRAM", "GRAMS")
         and len(w) >= 2
     ]
-
     customer_name_ta = " ".join(tamil_words) if tamil_words else None
     customer_name_en = " ".join(latin_words) if latin_words else None
-    customer_name = customer_name_en or customer_name_ta or "Unknown"
+    customer_name = customer_name_en or customer_name_ta or (name_text.strip() or "Unknown")
+
+    raw_text = " | ".join(filter(None, [name_text, flower_text, weight_text, grade_text]))
 
     return {
         "customer_name": customer_name,
@@ -199,7 +260,7 @@ def _parse_row(text: str, confidence: float) -> Optional[dict]:
         "weight_kg": round(weight_kg, 4),
         "grade": grade,
         "ocr_confidence": round(confidence, 3),
-        "raw_text": text,
+        "raw_text": raw_text,
     }
 
 
