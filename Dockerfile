@@ -1,43 +1,30 @@
-# ── Build stage ───────────────────────────────────────────────────────────────
-FROM python:3.11-slim AS builder
-
-WORKDIR /app
-
-# System deps for EasyOCR + Pillow
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libgl1 \
-    libglib2.0-0 \
-    libsm6 \
-    libxrender1 \
-    libxext6 \
-    libgomp1 \
-    && rm -rf /var/lib/apt/lists/*
-
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# ── Runtime stage ─────────────────────────────────────────────────────────────
 FROM python:3.11-slim
 
 WORKDIR /app
 
+# System dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libgl1 libglib2.0-0 libgomp1 \
+    libgl1 \
+    libglib2.0-0 \
+    libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
-COPY --from=builder /usr/local/bin /usr/local/bin
+# Copy requirements first
+COPY requirements.txt .
 
+# ✅ Install CPU-only PyTorch FIRST
+RUN pip install --no-cache-dir \
+    torch torchvision torchaudio \
+    --index-url https://download.pytorch.org/whl/cpu
+
+# ✅ Then install rest (make sure torch is NOT in requirements.txt)
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy app
 COPY . .
 
-# Install CPU-only PyTorch FIRST
-RUN pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
-
-# Then install easyocr
-RUN pip install --no-cache-dir easyocr
-
-# Create upload dir
-RUN mkdir -p app/static/uploads
+# Fix path
+RUN mkdir -p static/uploads
 
 EXPOSE 8000
 
