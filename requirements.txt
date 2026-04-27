@@ -3,7 +3,7 @@ sqlalchemy==2.0.35
 alembic==1.13.3
 psycopg2-binary==2.9.9
 easyocr==1.6.2
-Pillow==10.4.0
+Pillow==9.5.0
 numpy==1.26.4
 scipy==1.13.1
 pandas==2.2.3
