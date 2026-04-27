@@ -3,7 +3,6 @@ OCR Service — v2
 Now instrumented with per-stage timing for performance analysis.
 """
 
-import easyocr
 import numpy as np
 from PIL import Image, ImageFilter, ImageEnhance
 import io
@@ -14,11 +13,16 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-_reader: Optional[easyocr.Reader] = None
+# easyocr is intentionally NOT imported at module level.
+# Importing it at startup triggers torch + scipy C extensions immediately,
+# which causes "cannot load module more than once per process" when uvloop
+# initialises alongside them. Deferred import fixes this.
+_reader = None
 
 
-def get_reader() -> easyocr.Reader:
+def get_reader():
     """Lazy-load the EasyOCR reader with Tamil + English."""
+    import easyocr  # deferred — keeps uvicorn startup clean
     global _reader
     if _reader is None:
         logger.info("Loading EasyOCR model for Tamil + English…")
