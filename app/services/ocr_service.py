@@ -29,8 +29,8 @@ def get_reader():
         _reader = easyocr.Reader(
             ["ta", "en"],
             gpu=False,
-            model_storage_directory="./models",
-            download_enabled=True,
+            model_storage_directory="/app/models",  # absolute path — matches Dockerfile pre-download
+            download_enabled=False,                 # models are baked into the image at build time
         )
         logger.info("EasyOCR model loaded ✅")
     return _reader

@@ -1,7 +1,7 @@
-FROM python:3.11-slim
+FROM python:3.10-slim
 
 # Bump this to force Railway to invalidate its build cache
-ARG CACHE_BUST=2
+ARG CACHE_BUST=6
 
 WORKDIR /app
 
@@ -26,6 +26,10 @@ RUN pip install --no-cache-dir \
 
 # Step 3: Install the rest (numpy + scipy already locked, pip won't touch them).
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Step 4: Pre-download EasyOCR models at BUILD time so the container is ready instantly.
+# Models are baked into the image — no CDN call needed at runtime.
+RUN python3 -c "import easyocr; easyocr.Reader(['ta', 'en'], gpu=False, model_storage_directory='/app/models', download_enabled=True)"
 
 # Copy app
 COPY . .
