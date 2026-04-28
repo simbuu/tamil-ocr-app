@@ -114,22 +114,24 @@ def _bbox_center(bbox):
 def _assign_column(cx: float, img_w: float) -> str:
     """
     Map a word's horizontal centre to a template column.
-    Calibrated from observed OCR output — weight values land at ~83% x,
-    so weight extends to 90% and grade takes the last 10%.
-      S.No        : 0  – 10 %
-      CustomerName: 10 – 40 %
-      FlowerType  : 40 – 65 %
-      Weight      : 65 – 90 %
-      Grade       : 90 – 100 %
+    Calibrated from observed data across multiple test uploads:
+      S.No data       : ~12.8%  → sno    zone  0 – 18%
+      CustomerName    : ~21-22% → name   zone 18 – 50%
+      FlowerCode      : ~51-67% → flower zone 50 – 73%
+      Weight data     : ~77-78% → weight zone 73 – 92%
+      Grade           : ~97%    → grade  zone 92 – 100%
+    Boundary 18% sits between S.No (12.8%) and names (21%).
+    Boundary 50% gives margin for left-aligned flower codes starting at ~51%.
+    Boundary 73% sits between flower code header (66.7%) and weight (77%).
     """
     ratio = cx / img_w if img_w else 0
-    if ratio < 0.17:   # wider S.No zone — printed numbers 10-20 land at ~15-16%
+    if ratio < 0.18:
         return "sno"
-    if ratio < 0.40:
+    if ratio < 0.50:
         return "name"
-    if ratio < 0.65:
+    if ratio < 0.73:
         return "flower"
-    if ratio < 0.90:
+    if ratio < 0.92:
         return "weight"
     return "grade"
 
@@ -253,10 +255,23 @@ def _parse_columns(
     Each argument contains only the OCR words that fell inside that column.
     """
     # ── Weight ────────────────────────────────────────────────────────────────
+    # Normalize common OCR substitutions before matching numbers:
+    #   I → 1 (capital I looks like digit 1)
+    #   l → 1 (lowercase l looks like digit 1)
+    #   O → 0 (capital O looks like digit 0) when adjacent to digits
+    weight_text_norm = re.sub(r"\b[IlL](?=\d|\.)", "1", weight_text)        # I100 → 1100
+    weight_text_norm = re.sub(r"\b[IlL](?=[Kk][Gg])", "1", weight_text_norm)   # Ikg → 1kg
+    weight_text_norm = re.sub(r"(?<=\d)[Oo](?=\d)", "0", weight_text_norm)  # 5O0 → 500
+    # '600g' sometimes read as '6009' (g misidentified as digit 9).
+    # Safe heuristic: 3+ digit number ending in 9 with no unit → treat trailing 9 as 'g'.
+    # Requires 3+ leading digits so legitimate values like 199 are unaffected.
+    weight_text_norm = re.sub(r"\b(\d{3,})9\b", r"\1g", weight_text_norm)   # 6009 → 600g
+    logger.debug("OCR_PARSE: weight_text raw=%r norm=%r", weight_text, weight_text_norm)
+
     weight_pattern = re.compile(
         r"(\d+(?:\.\d+)?)\s*(kg|kgs?|grams?|gm|g)?", re.IGNORECASE
     )
-    weight_matches = weight_pattern.findall(weight_text)
+    weight_matches = weight_pattern.findall(weight_text_norm)
     weight_kg = 0.0
     if not weight_matches:
         # No number in weight column — check if row has any useful content at all.
@@ -344,7 +359,15 @@ def run_ocr(image_bytes: bytes) -> dict:
 
         t0 = time.perf_counter()
         reader = get_reader()
-        raw = reader.readtext(processed, detail=1, paragraph=False)
+        raw = reader.readtext(
+            processed,
+            detail=1,
+            paragraph=False,
+            # Lower thresholds so small/lightly-written digits (flower codes) aren't dropped.
+            # Default text_threshold=0.7, low_text=0.4 — reducing both catches more text.
+            text_threshold=0.5,
+            low_text=0.3,
+        )
         timings["ocr_ms"] = int((time.perf_counter() - t0) * 1000)
 
         normalized = [

@@ -36,7 +36,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Bump this to force Railway to invalidate only the app-code layer (not torch/models).
-ARG CACHE_BUST=21
+ARG CACHE_BUST=24
 
 # Copy app
 COPY . .
