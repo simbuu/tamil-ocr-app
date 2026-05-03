@@ -1,0 +1,558 @@
+{% extends "base.html" %}
+{% block title %}Quick Entry | Tamil OCR{% endblock %}
+
+{% block head %}
+<style>
+  /* ── Quick Entry page overrides ─────────────────────────── */
+  .qe-header {
+    background: var(--green-900);
+    color: var(--white);
+    text-align: center;
+    padding: 1.25rem 1rem .9rem;
+    border-radius: var(--radius) var(--radius) 0 0;
+    margin-bottom: 0;
+  }
+  .qe-header h1 {
+    font-family: var(--font-display);
+    font-size: 1.6rem;
+    color: var(--white);
+    display: flex; align-items: center; justify-content: center; gap: .5rem;
+  }
+  .qe-header .qe-date {
+    font-size: .85rem;
+    color: var(--green-200);
+    margin-top: .2rem;
+  }
+
+  .qe-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1.25rem;
+  }
+  .qe-stat {
+    background: var(--white);
+    border-radius: var(--radius);
+    padding: 1.1rem 1.25rem;
+    border: 1px solid var(--slate-100);
+    box-shadow: var(--shadow-sm);
+    text-align: center;
+  }
+  .qe-stat-label {
+    font-size: .7rem;
+    font-weight: 600;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--slate-500);
+    margin-bottom: .4rem;
+  }
+  .qe-stat-value {
+    font-family: var(--font-display);
+    font-size: 2rem;
+    color: var(--green-900);
+    line-height: 1;
+  }
+  .qe-stat-value .qe-unit {
+    font-size: 1rem;
+    color: var(--green-700);
+    font-family: var(--font-body);
+    font-weight: 600;
+  }
+
+  /* ── Form card ───────────────────────────────────────────── */
+  .qe-form-card {
+    background: var(--white);
+    border-radius: var(--radius);
+    padding: 1.5rem;
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--slate-100);
+    margin-bottom: 1.25rem;
+  }
+
+  .qe-section-label {
+    font-size: .7rem;
+    font-weight: 700;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--slate-500);
+    margin-bottom: .6rem;
+    display: flex; align-items: center; gap: .4rem;
+  }
+
+  /* Farmer select */
+  .qe-select {
+    width: 100%;
+    padding: .65rem .9rem;
+    border: 1.5px solid var(--slate-300);
+    border-radius: 8px;
+    font-family: var(--font-body);
+    font-size: .95rem;
+    outline: none;
+    background: var(--white);
+    cursor: pointer;
+    transition: border .15s;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2364748b' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right .8rem center;
+    padding-right: 2.2rem;
+  }
+  .qe-select:focus { border-color: var(--green-500); box-shadow: 0 0 0 3px rgba(34,197,94,.12); }
+
+  /* Flower type buttons */
+  .qe-flower-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: .6rem;
+    margin-bottom: 1.25rem;
+  }
+  .qe-flower-btn {
+    padding: .7rem .5rem;
+    border: 2px solid var(--slate-200);
+    border-radius: 10px;
+    background: var(--white);
+    cursor: pointer;
+    text-align: center;
+    font-family: var(--font-body);
+    font-size: .85rem;
+    font-weight: 600;
+    color: var(--slate-700);
+    transition: all .15s;
+    line-height: 1.4;
+  }
+  .qe-flower-btn:hover {
+    border-color: var(--green-400);
+    background: var(--green-50);
+    color: var(--green-900);
+  }
+  .qe-flower-btn.active {
+    border-color: var(--green-500);
+    background: var(--green-100);
+    color: var(--green-900);
+    box-shadow: 0 0 0 3px rgba(34,197,94,.15);
+  }
+  .qe-flower-btn .tamil { color: var(--slate-500); font-size: .78rem; font-weight: 400; }
+  .qe-flower-btn.active .tamil { color: var(--green-700); }
+
+  /* Quick weight buttons */
+  .qe-weight-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: .6rem;
+    margin-bottom: 1.25rem;
+  }
+  .qe-weight-btn {
+    padding: .55rem .4rem;
+    border: 1.5px solid var(--slate-200);
+    border-radius: 8px;
+    background: var(--white);
+    cursor: pointer;
+    text-align: center;
+    font-family: var(--font-mono);
+    font-size: .9rem;
+    font-weight: 500;
+    color: var(--slate-600);
+    transition: all .15s;
+  }
+  .qe-weight-btn:hover {
+    border-color: var(--green-400);
+    background: var(--green-50);
+    color: var(--green-900);
+  }
+  .qe-weight-btn.active {
+    border-color: var(--green-500);
+    background: var(--green-50);
+    color: var(--green-900);
+    font-weight: 700;
+  }
+
+  /* Weight input */
+  .qe-weight-display {
+    width: 100%;
+    padding: .9rem 1rem;
+    border: 1.5px solid var(--slate-200);
+    border-radius: 10px;
+    font-family: var(--font-mono);
+    font-size: 1.6rem;
+    font-weight: 600;
+    text-align: center;
+    color: var(--slate-700);
+    background: var(--slate-100);
+    outline: none;
+    transition: border .15s, background .15s;
+    margin-bottom: 1.25rem;
+  }
+  .qe-weight-display:focus {
+    border-color: var(--green-500);
+    background: var(--white);
+    box-shadow: 0 0 0 3px rgba(34,197,94,.12);
+  }
+
+  /* Save button */
+  .qe-save-btn {
+    width: 100%;
+    padding: .9rem;
+    background: var(--green-700);
+    color: var(--white);
+    border: none;
+    border-radius: 10px;
+    font-family: var(--font-body);
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: .03em;
+    cursor: pointer;
+    transition: all .15s;
+    display: flex; align-items: center; justify-content: center; gap: .5rem;
+  }
+  .qe-save-btn:hover:not(:disabled) {
+    background: var(--green-900);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-md);
+  }
+  .qe-save-btn:disabled {
+    opacity: .5;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  /* Recent entries */
+  .qe-recent-card {
+    background: var(--white);
+    border-radius: var(--radius);
+    padding: 1.25rem 1.5rem;
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--slate-100);
+  }
+  .qe-recent-title {
+    font-size: .7rem;
+    font-weight: 700;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--slate-500);
+    margin-bottom: 1rem;
+    display: flex; align-items: center; gap: .4rem;
+  }
+  .qe-entry-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: .7rem 0;
+    border-bottom: 1px solid var(--slate-100);
+    gap: .75rem;
+  }
+  .qe-entry-row:last-child { border-bottom: none; }
+  .qe-entry-left { flex: 1; min-width: 0; }
+  .qe-entry-farmer { font-weight: 600; font-size: .9rem; color: var(--slate-900); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .qe-entry-flower { font-size: .78rem; color: var(--slate-500); margin-top: .1rem; }
+  .qe-entry-weight {
+    font-family: var(--font-mono);
+    font-weight: 700;
+    font-size: .95rem;
+    color: var(--green-700);
+    white-space: nowrap;
+  }
+  .qe-entry-time { font-size: .72rem; color: var(--slate-400); white-space: nowrap; }
+  .qe-empty { text-align: center; color: var(--slate-400); font-size: .9rem; padding: 1.5rem 0; }
+
+  /* Toast */
+  .qe-toast {
+    position: fixed;
+    bottom: 2rem; left: 50%;
+    transform: translateX(-50%) translateY(2rem);
+    background: var(--green-900);
+    color: var(--white);
+    padding: .75rem 1.5rem;
+    border-radius: 999px;
+    font-size: .9rem;
+    font-weight: 600;
+    box-shadow: var(--shadow-lg);
+    opacity: 0;
+    transition: opacity .25s, transform .25s;
+    pointer-events: none;
+    z-index: 999;
+  }
+  .qe-toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  /* Wrapper width */
+  .qe-wrap {
+    max-width: 520px;
+    margin: 0 auto;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="qe-wrap">
+
+  <!-- Header -->
+  <div class="qe-header">
+    <h1>🌸 Quick Entry</h1>
+    <div class="qe-date" id="qe-date-label"></div>
+  </div>
+
+  <!-- Stats -->
+  <div class="qe-stats mt-2">
+    <div class="qe-stat">
+      <div class="qe-stat-label">Today's Entries</div>
+      <div class="qe-stat-value" id="stat-count">0</div>
+    </div>
+    <div class="qe-stat">
+      <div class="qe-stat-label">Total Weight</div>
+      <div class="qe-stat-value" id="stat-weight">0.0<span class="qe-unit">kg</span></div>
+    </div>
+  </div>
+
+  <!-- Form -->
+  <div class="qe-form-card">
+
+    <!-- Farmer -->
+    <div class="qe-section-label">👤 Select Farmer</div>
+    <select class="qe-select" id="farmer-select" style="margin-bottom:1.25rem">
+      <option value="">Choose farmer…</option>
+    </select>
+
+    <!-- Flower type -->
+    <div class="qe-section-label">🌸 Flower Type</div>
+    <div class="qe-flower-grid" id="flower-grid">
+      <!-- populated by JS -->
+    </div>
+
+    <!-- Quick weights -->
+    <div class="qe-section-label">⚖️ Quick Weights</div>
+    <div class="qe-weight-grid">
+      <button class="qe-weight-btn" data-kg="1">1 kg</button>
+      <button class="qe-weight-btn" data-kg="2">2 kg</button>
+      <button class="qe-weight-btn" data-kg="5">5 kg</button>
+      <button class="qe-weight-btn" data-kg="10">10 kg</button>
+    </div>
+
+    <!-- Weight input -->
+    <div class="qe-section-label">🏋️ Weight (KG)</div>
+    <input
+      type="number"
+      class="qe-weight-display"
+      id="weight-input"
+      step="0.1"
+      min="0.1"
+      placeholder="0.0"
+    />
+
+    <!-- Save -->
+    <button class="qe-save-btn" id="save-btn" disabled>
+      ✓ Save Entry
+    </button>
+
+  </div>
+
+  <!-- Recent entries -->
+  <div class="qe-recent-card">
+    <div class="qe-recent-title">📋 Recent Entries</div>
+    <div id="recent-list">
+      <div class="qe-empty">No entries yet today</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Toast -->
+<div class="qe-toast" id="toast"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // ── State ────────────────────────────────────────────────
+  let selectedFlower = null;   // { flower_type, flower_type_tamil, price_per_kg }
+  let todayEntries   = [];     // transactions saved this session / today
+
+  // ── Date label ───────────────────────────────────────────
+  const now = new Date();
+  document.getElementById('qe-date-label').textContent =
+    now.toLocaleDateString('en-IN', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
+
+  // ── Load farmers ─────────────────────────────────────────
+  async function loadFarmers() {
+    try {
+      const customers = await api('/api/customers/');
+      const sel = document.getElementById('farmer-select');
+      if (!customers.length) {
+        sel.innerHTML = '<option value="">No farmers yet — add via Customers page</option>';
+        return;
+      }
+      sel.innerHTML = '<option value="">Choose farmer…</option>' +
+        customers.map(c =>
+          `<option value="${c.name}" data-tamil="${c.name_tamil||''}">${c.name}${c.name_tamil ? ' · ' + c.name_tamil : ''}</option>`
+        ).join('');
+    } catch(e) { console.error('loadFarmers', e); }
+  }
+
+  // ── Load flower types ─────────────────────────────────────
+  async function loadFlowers() {
+    try {
+      const { rates } = await api('/api/rates/');
+      const grid = document.getElementById('flower-grid');
+      if (!rates.length) {
+        grid.innerHTML = '<p style="color:var(--slate-500);font-size:.85rem">No market rates set up yet.</p>';
+        return;
+      }
+      grid.innerHTML = rates.map(r => `
+        <button class="qe-flower-btn"
+          data-flower="${r.flower_type}"
+          data-tamil="${r.flower_type_tamil||''}"
+          data-price="${r.price_per_kg}">
+          ${r.flower_type}
+          ${r.flower_type_tamil ? `<br><span class="tamil">${r.flower_type_tamil}</span>` : ''}
+        </button>
+      `).join('');
+      // dynamic column count
+      if (rates.length <= 3) grid.style.gridTemplateColumns = `repeat(${rates.length}, 1fr)`;
+      else if (rates.length <= 6) grid.style.gridTemplateColumns = 'repeat(3, 1fr)';
+      else grid.style.gridTemplateColumns = 'repeat(4, 1fr)';
+
+      grid.querySelectorAll('.qe-flower-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          grid.querySelectorAll('.qe-flower-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          selectedFlower = {
+            flower_type: btn.dataset.flower,
+            flower_type_tamil: btn.dataset.tamil,
+            price_per_kg: parseFloat(btn.dataset.price),
+          };
+          validateForm();
+        });
+      });
+    } catch(e) { console.error('loadFlowers', e); }
+  }
+
+  // ── Quick weight buttons ──────────────────────────────────
+  document.querySelectorAll('.qe-weight-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.qe-weight-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('weight-input').value = btn.dataset.kg;
+      validateForm();
+    });
+  });
+
+  document.getElementById('weight-input').addEventListener('input', () => {
+    document.querySelectorAll('.qe-weight-btn').forEach(b => b.classList.remove('active'));
+    validateForm();
+  });
+
+  document.getElementById('farmer-select').addEventListener('change', validateForm);
+
+  // ── Validate ──────────────────────────────────────────────
+  function validateForm() {
+    const farmer = document.getElementById('farmer-select').value;
+    const weight = parseFloat(document.getElementById('weight-input').value);
+    const ok = farmer && selectedFlower && weight > 0;
+    document.getElementById('save-btn').disabled = !ok;
+  }
+
+  // ── Save entry ────────────────────────────────────────────
+  document.getElementById('save-btn').addEventListener('click', async () => {
+    const sel = document.getElementById('farmer-select');
+    const farmerName  = sel.value;
+    const farmerTamil = sel.selectedOptions[0]?.dataset.tamil || '';
+    const weight      = parseFloat(document.getElementById('weight-input').value);
+
+    if (!farmerName || !selectedFlower || !(weight > 0)) return;
+
+    const btn = document.getElementById('save-btn');
+    btn.disabled = true;
+    btn.textContent = '⏳ Saving…';
+
+    try {
+      const tx = await api('/api/transactions/', {
+        method: 'POST',
+        body: JSON.stringify({
+          customer_name:       farmerName,
+          customer_name_tamil: farmerTamil,
+          flower_type:         selectedFlower.flower_type,
+          flower_type_tamil:   selectedFlower.flower_type_tamil,
+          weight_kg:           weight,
+          price_per_kg:        selectedFlower.price_per_kg,
+        }),
+      });
+
+      todayEntries.unshift(tx);
+      updateStats();
+      renderRecent();
+      resetForm();
+      showToast(`✓ Saved ${weight} kg of ${selectedFlower.flower_type} for ${farmerName}`);
+    } catch(e) {
+      showToast('❌ ' + (e.message || 'Save failed'));
+      btn.disabled = false;
+    }
+
+    btn.textContent = '✓ Save Entry';
+    validateForm();
+  });
+
+  // ── Reset form ────────────────────────────────────────────
+  function resetForm() {
+    document.getElementById('weight-input').value = '';
+    document.querySelectorAll('.qe-weight-btn').forEach(b => b.classList.remove('active'));
+    // keep flower & farmer selected for rapid repeat entry
+  }
+
+  // ── Stats ─────────────────────────────────────────────────
+  function updateStats() {
+    document.getElementById('stat-count').textContent = todayEntries.length;
+    const total = todayEntries.reduce((s, t) => s + (t.weight_kg || 0), 0);
+    document.getElementById('stat-weight').innerHTML =
+      total.toFixed(1) + '<span class="qe-unit">kg</span>';
+  }
+
+  // ── Render recent ─────────────────────────────────────────
+  function renderRecent() {
+    const list = document.getElementById('recent-list');
+    if (!todayEntries.length) {
+      list.innerHTML = '<div class="qe-empty">No entries yet today</div>';
+      return;
+    }
+    list.innerHTML = todayEntries.slice(0, 20).map(tx => {
+      const t = tx.created_at ? new Date(tx.created_at) : new Date();
+      const timeStr = t.toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit' });
+      return `
+        <div class="qe-entry-row">
+          <div class="qe-entry-left">
+            <div class="qe-entry-farmer">${tx.customer_name}${tx.customer_name_tamil ? ' · ' + tx.customer_name_tamil : ''}</div>
+            <div class="qe-entry-flower">${tx.flower_type}${tx.flower_type_tamil ? ' · ' + tx.flower_type_tamil : ''} · ₹${tx.price_per_kg}/kg</div>
+          </div>
+          <div style="text-align:right">
+            <div class="qe-entry-weight">${tx.weight_kg.toFixed(1)} kg</div>
+            <div class="qe-entry-time">${timeStr}</div>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  // ── Load today's existing entries ─────────────────────────
+  async function loadTodayEntries() {
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      const { transactions } = await api(`/api/transactions/?start_date=${today}&end_date=${today}&limit=50`);
+      todayEntries = transactions;
+      updateStats();
+      renderRecent();
+    } catch(e) { console.error('loadTodayEntries', e); }
+  }
+
+  // ── Toast ─────────────────────────────────────────────────
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 3000);
+  }
+
+  // ── Init ──────────────────────────────────────────────────
+  loadFarmers();
+  loadFlowers();
+  loadTodayEntries();
+</script>
+{% endblock %}

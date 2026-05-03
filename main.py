@@ -93,5 +93,10 @@ async def customers_page(request: Request):
     return templates.TemplateResponse("customers.html", {"request": request})
 
 
+@app.get("/quick-entry")
+async def quick_entry_page(request: Request):
+    return templates.TemplateResponse("quick_entry.html", {"request": request})
+
+
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
