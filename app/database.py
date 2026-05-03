@@ -85,7 +85,7 @@ Base = declarative_base()
 
 def init_db():
     """Create all tables and apply incremental column migrations."""
-    from app.models import transaction, market_rate, ocr_session, feedback, customer  # noqa: F401
+    from app.models import transaction, market_rate, ocr_session, feedback, customer, loan  # noqa: F401
 
     logger.info("📦 create_all → %s", str(engine.url).split("@")[-1])
     Base.metadata.create_all(bind=engine)

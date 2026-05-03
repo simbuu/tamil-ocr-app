@@ -1,0 +1,656 @@
+{% extends "base.html" %}
+{% block title %}Accounts | Tamil OCR{% endblock %}
+
+{% block head %}
+<style>
+  /* ── Layout ──────────────────────────────────────────── */
+  .acc-grid {
+    display: grid;
+    grid-template-columns: 340px 1fr;
+    gap: 1.25rem;
+    align-items: start;
+  }
+  @media (max-width: 860px) { .acc-grid { grid-template-columns: 1fr; } }
+
+  /* ── Account list ────────────────────────────────────── */
+  .acc-item {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: .85rem 1rem;
+    border-bottom: 1px solid var(--slate-100);
+    cursor: pointer;
+    transition: background .12s;
+    gap: .75rem;
+  }
+  .acc-item:last-child { border-bottom: none; }
+  .acc-item:hover, .acc-item.selected { background: var(--green-50); }
+  .acc-item.selected { border-left: 3px solid var(--green-500); }
+  .acc-name { font-weight: 700; font-size: .92rem; color: var(--slate-900); }
+  .acc-tamil { font-size: .82rem; color: var(--green-700); margin-top: .1rem; }
+  .acc-rate  { font-size: .75rem; color: var(--slate-400); margin-top: .15rem; }
+  .acc-balance {
+    text-align: right;
+    font-family: var(--font-mono);
+    font-weight: 700;
+    font-size: .95rem;
+    white-space: nowrap;
+  }
+  .acc-balance.positive { color: #991b1b; }
+  .acc-balance.zero     { color: var(--green-700); }
+  .acc-closed { opacity: .5; }
+
+  /* ── Detail panel ────────────────────────────────────── */
+  .detail-placeholder {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 4rem 2rem; color: var(--slate-400); text-align: center;
+    border: 2px dashed var(--slate-200); border-radius: var(--radius);
+  }
+  .detail-placeholder .icon { font-size: 3rem; margin-bottom: 1rem; }
+
+  /* Balance summary strip */
+  .balance-strip {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: .75rem;
+    margin-bottom: 1.25rem;
+  }
+  @media (max-width: 640px) { .balance-strip { grid-template-columns: repeat(2,1fr); } }
+  .bs-card {
+    background: var(--white); border: 1px solid var(--slate-100);
+    border-radius: 10px; padding: .85rem 1rem; text-align: center;
+    box-shadow: var(--shadow-sm);
+  }
+  .bs-label { font-size: .68rem; font-weight: 600; text-transform: uppercase;
+    letter-spacing: .08em; color: var(--slate-400); margin-bottom: .3rem; }
+  .bs-value { font-family: var(--font-display); font-size: 1.4rem; color: var(--green-900); }
+  .bs-value.danger { color: #991b1b; }
+  .bs-value.safe   { color: var(--green-700); }
+
+  /* Transaction list */
+  .txn-row {
+    display: flex; align-items: center; gap: .75rem;
+    padding: .7rem 0; border-bottom: 1px solid var(--slate-100);
+  }
+  .txn-row:last-child { border-bottom: none; }
+  .txn-icon { font-size: 1.3rem; width: 2rem; text-align: center; flex-shrink: 0; }
+  .txn-body { flex: 1; min-width: 0; }
+  .txn-type  { font-weight: 700; font-size: .88rem; }
+  .txn-note  { font-size: .78rem; color: var(--slate-500); margin-top: .1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .txn-date  { font-size: .75rem; color: var(--slate-400); font-family: var(--font-mono); }
+  .txn-amount { font-family: var(--font-mono); font-weight: 700; font-size: .95rem; white-space: nowrap; }
+  .txn-amount.debit  { color: #991b1b; }
+  .txn-amount.credit { color: var(--green-700); }
+
+  /* Billing panel */
+  .bill-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: .5rem 0; border-bottom: 1px solid var(--slate-100); font-size: .9rem;
+  }
+  .bill-row:last-child { border-bottom: none; }
+  .bill-total {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: .85rem 1rem; background: var(--green-950); border-radius: 10px;
+    color: var(--white); margin-top: .75rem; font-weight: 700;
+  }
+  .bill-total .amount { font-family: var(--font-mono); font-size: 1.2rem; color: var(--green-400); }
+
+  /* Tabs within detail */
+  .dtabs { display: flex; gap: .15rem; border-bottom: 2px solid var(--slate-100); margin-bottom: 1rem; }
+  .dtab {
+    padding: .6rem 1rem; cursor: pointer; font-size: .88rem; font-weight: 600;
+    color: var(--slate-400); border-bottom: 3px solid transparent; margin-bottom: -2px;
+    transition: all .15s; white-space: nowrap;
+  }
+  .dtab.active { color: var(--green-700); border-bottom-color: var(--green-500); }
+  .dtab-panel { display: none; }
+  .dtab-panel.active { display: block; }
+
+  /* Modals */
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.5);
+    display: flex; align-items: center; justify-content: center; z-index: 1000;
+  }
+  .modal {
+    background: var(--white); border-radius: 14px; padding: 1.5rem;
+    width: 92%; max-width: 440px; box-shadow: var(--shadow-lg);
+    max-height: 92vh; overflow-y: auto;
+  }
+  .modal-title { font-family: var(--font-display); font-size: 1.2rem;
+    color: var(--green-900); margin-bottom: 1rem; }
+  .form-row { margin-bottom: .85rem; }
+
+  /* Type pill buttons */
+  .type-btns { display: flex; gap: .5rem; }
+  .type-btn {
+    flex: 1; padding: .55rem .5rem; border-radius: 8px; border: 2px solid var(--slate-200);
+    cursor: pointer; font-weight: 600; font-size: .85rem; text-align: center;
+    transition: all .15s; background: var(--white);
+  }
+  .type-btn[data-type="borrow"].active  { border-color: #991b1b; background: #fee2e2; color: #991b1b; }
+  .type-btn[data-type="repay"].active   { border-color: var(--green-500); background: var(--green-100); color: var(--green-900); }
+  .type-btn[data-type="interest"].active{ border-color: #d97706; background: #fef3c7; color: #92400e; }
+  .type-btn:hover { border-color: var(--slate-400); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header flex items-center justify-between" style="flex-wrap:wrap;gap:.75rem">
+  <div>
+    <h1>💰 Accounts & Billing</h1>
+    <p>Manage farmer loan advances, interest, and monthly bill settlements.</p>
+  </div>
+  <button class="btn btn-primary" onclick="openNewAccount()">＋ New Account</button>
+</div>
+
+<div id="alert" class="alert hidden"></div>
+
+<!-- Summary strip -->
+<div class="balance-strip" id="summary-strip">
+  <div class="bs-card">
+    <div class="bs-label">Active Accounts</div>
+    <div class="bs-value" id="s-accounts">—</div>
+  </div>
+  <div class="bs-card">
+    <div class="bs-label">Total Outstanding</div>
+    <div class="bs-value danger" id="s-outstanding">—</div>
+  </div>
+</div>
+
+<!-- Main grid -->
+<div class="acc-grid">
+
+  <!-- Account list -->
+  <div class="card" style="padding:0">
+    <div style="padding:1rem 1rem .5rem;border-bottom:1px solid var(--slate-100);display:flex;align-items:center;justify-content:space-between">
+      <h2 class="card-title" style="margin:0;font-size:1rem">Farmer Accounts</h2>
+      <label style="display:flex;align-items:center;gap:.4rem;font-size:.8rem;font-weight:500;color:var(--slate-500);cursor:pointer">
+        <input type="checkbox" id="show-closed"> Show closed
+      </label>
+    </div>
+    <div id="acc-list"><div style="padding:2rem;text-align:center;color:var(--slate-400)">Loading…</div></div>
+  </div>
+
+  <!-- Detail panel -->
+  <div id="detail-panel">
+    <div class="detail-placeholder">
+      <div class="icon">💳</div>
+      <p>Select a farmer account to view details, record transactions, and generate the monthly bill.</p>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── New Account Modal ─────────────────────────────────── -->
+<div id="new-acc-modal" class="modal-overlay hidden">
+  <div class="modal">
+    <div class="modal-title">➕ New Loan Account</div>
+    <div class="form-row">
+      <label>Farmer Name *</label>
+      <select class="input" id="na-customer">
+        <option value="">Choose from existing farmers…</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label>Or enter name manually</label>
+      <input class="input" id="na-name" placeholder="Farmer name" />
+    </div>
+    <div class="form-row">
+      <label>Tamil Name (optional)</label>
+      <input class="input" id="na-tamil" placeholder="தமிழ் பெயர்" />
+    </div>
+    <div class="form-row">
+      <label>Monthly Interest Rate (%)</label>
+      <input class="input" id="na-rate" type="number" step="0.1" min="0" value="2" />
+      <p class="text-sm text-muted mt-1">E.g. 2 means 2% per month on outstanding balance</p>
+    </div>
+    <div class="form-row">
+      <label>Notes (optional)</label>
+      <input class="input" id="na-notes" placeholder="Any remarks…" />
+    </div>
+    <div class="flex gap-1 mt-2">
+      <button class="btn btn-outline" onclick="closeModal('new-acc-modal')" style="flex:1;justify-content:center">Cancel</button>
+      <button class="btn btn-primary" onclick="saveNewAccount()" style="flex:1;justify-content:center">Create Account</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Add Transaction Modal ──────────────────────────────── -->
+<div id="txn-modal" class="modal-overlay hidden">
+  <div class="modal">
+    <div class="modal-title" id="txn-modal-title">Record Transaction</div>
+    <div class="form-row">
+      <label>Type</label>
+      <div class="type-btns">
+        <button class="type-btn active" data-type="borrow"   onclick="setTxnType('borrow')">💸 Borrow</button>
+        <button class="type-btn"        data-type="repay"    onclick="setTxnType('repay')">✅ Repay</button>
+        <button class="type-btn"        data-type="interest" onclick="setTxnType('interest')">📈 Interest</button>
+      </div>
+    </div>
+    <div class="form-row">
+      <label>Amount (₹) *</label>
+      <input class="input" id="txn-amount" type="number" step="1" min="1" placeholder="0" />
+    </div>
+    <div class="form-row">
+      <label>Date</label>
+      <input class="input" id="txn-date" type="date" />
+    </div>
+    <div class="form-row">
+      <label>Notes (optional)</label>
+      <input class="input" id="txn-notes" placeholder="e.g. Advance for Pongal, Bill deduction…" />
+    </div>
+    <div class="flex gap-1 mt-2">
+      <button class="btn btn-outline" onclick="closeModal('txn-modal')" style="flex:1;justify-content:center">Cancel</button>
+      <button class="btn btn-primary" onclick="saveTxn()" style="flex:1;justify-content:center">Save</button>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const alertEl = document.getElementById('alert');
+  let accounts = [];
+  let activeAccountId = null;
+  let txnType = 'borrow';
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  function fmt(n) { return '₹ ' + Math.abs(n).toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2}); }
+
+  function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+
+  function setTxnType(t) {
+    txnType = t;
+    document.querySelectorAll('.type-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.type === t);
+    });
+  }
+
+  // ── Summary ───────────────────────────────────────────────────────────────
+  async function loadSummary() {
+    try {
+      const s = await api('/api/loans/summary');
+      document.getElementById('s-accounts').textContent    = s.active_accounts;
+      document.getElementById('s-outstanding').textContent = fmt(s.total_outstanding);
+    } catch(e) {}
+  }
+
+  // ── Account list ──────────────────────────────────────────────────────────
+  async function loadAccounts() {
+    try {
+      accounts = await api('/api/loans/');
+      renderList();
+    } catch(e) {
+      document.getElementById('acc-list').innerHTML = '<div style="padding:1rem;color:#991b1b">Failed to load</div>';
+    }
+  }
+
+  function renderList() {
+    const showClosed = document.getElementById('show-closed').checked;
+    const list = document.getElementById('acc-list');
+    const filtered = accounts.filter(a => showClosed || a.status === 'active');
+    if (!filtered.length) {
+      list.innerHTML = '<div style="padding:2rem;text-align:center;color:var(--slate-400)">No accounts yet.<br>Click "+ New Account" to add one.</div>';
+      return;
+    }
+    list.innerHTML = filtered.map(a => `
+      <div class="acc-item ${a.status === 'closed' ? 'acc-closed' : ''} ${a.id === activeAccountId ? 'selected' : ''}"
+           onclick="selectAccount(${a.id})">
+        <div style="flex:1;min-width:0">
+          <div class="acc-name">${a.customer_name}</div>
+          ${a.customer_name_tamil ? `<div class="acc-tamil">${a.customer_name_tamil}</div>` : ''}
+          <div class="acc-rate">${a.interest_rate}%/mo · ${a.status}</div>
+        </div>
+        <div class="acc-balance ${a.balance > 0 ? 'positive' : 'zero'}">
+          ${a.balance > 0 ? fmt(a.balance) : '✓ Cleared'}
+        </div>
+      </div>
+    `).join('');
+  }
+
+  document.getElementById('show-closed').addEventListener('change', renderList);
+
+  // ── Select account ────────────────────────────────────────────────────────
+  async function selectAccount(id) {
+    activeAccountId = id;
+    renderList();
+    const acc = accounts.find(a => a.id === id);
+    renderDetail(acc);
+  }
+
+  function renderDetail(acc) {
+    const panel = document.getElementById('detail-panel');
+    panel.innerHTML = `
+      <div class="card" style="padding:0">
+        <!-- Header -->
+        <div style="padding:1rem 1.25rem;border-bottom:1px solid var(--slate-100);display:flex;align-items:flex-start;justify-content:space-between;gap:.75rem;flex-wrap:wrap">
+          <div>
+            <div style="font-family:var(--font-display);font-size:1.15rem;color:var(--green-900)">${acc.customer_name}</div>
+            ${acc.customer_name_tamil ? `<div style="font-size:.9rem;color:var(--green-700)">${acc.customer_name_tamil}</div>` : ''}
+            <div class="text-sm text-muted">${acc.interest_rate}% per month · ${acc.status}</div>
+          </div>
+          <div class="flex gap-1" style="flex-wrap:wrap">
+            <button class="btn btn-primary btn-sm" onclick="openTxnModal(${acc.id})">＋ Transaction</button>
+            <button class="btn btn-outline btn-sm" onclick="applyInterest(${acc.id})">📈 Apply Interest</button>
+            <button class="btn btn-outline btn-sm" onclick="showBilling(${acc.id}, '${acc.customer_name}')">🧾 Bill</button>
+            ${acc.status === 'active'
+              ? `<button class="btn btn-danger btn-sm" onclick="toggleStatus(${acc.id}, 'closed')">Close</button>`
+              : `<button class="btn btn-outline btn-sm" onclick="toggleStatus(${acc.id}, 'active')">Reopen</button>`}
+          </div>
+        </div>
+
+        <!-- Balance strip -->
+        <div style="padding:1rem 1.25rem;border-bottom:1px solid var(--slate-100)">
+          <div class="balance-strip" style="margin-bottom:0">
+            <div class="bs-card">
+              <div class="bs-label">Borrowed</div>
+              <div class="bs-value danger">${fmt(acc.total_borrowed)}</div>
+            </div>
+            <div class="bs-card">
+              <div class="bs-label">Interest</div>
+              <div class="bs-value" style="color:#d97706">${fmt(acc.total_interest)}</div>
+            </div>
+            <div class="bs-card">
+              <div class="bs-label">Repaid</div>
+              <div class="bs-value safe">${fmt(acc.total_repaid)}</div>
+            </div>
+            <div class="bs-card">
+              <div class="bs-label">Outstanding</div>
+              <div class="bs-value ${acc.balance > 0 ? 'danger' : 'safe'}">${acc.balance > 0 ? fmt(acc.balance) : '✓ Nil'}</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tabs -->
+        <div style="padding:0 1.25rem">
+          <div class="dtabs">
+            <div class="dtab active" onclick="switchDTab('ledger-${acc.id}', this)">📒 Ledger</div>
+            <div class="dtab" onclick="switchDTab('billing-${acc.id}', this)">🧾 Monthly Bill</div>
+          </div>
+
+          <!-- Ledger -->
+          <div id="ledger-${acc.id}" class="dtab-panel active">
+            <div id="txn-list-${acc.id}" style="padding-bottom:.5rem">
+              <div style="color:var(--slate-400);text-align:center;padding:1.5rem">Loading…</div>
+            </div>
+          </div>
+
+          <!-- Billing -->
+          <div id="billing-${acc.id}" class="dtab-panel">
+            <div style="display:flex;gap:.75rem;flex-wrap:wrap;margin-bottom:1rem;margin-top:.5rem">
+              <div>
+                <label>Month</label>
+                <select class="input" id="bill-month-${acc.id}" style="width:auto;min-width:120px">
+                  ${['January','February','March','April','May','June','July','August',
+                     'September','October','November','December']
+                    .map((m,i) => `<option value="${i+1}" ${i+1===new Date().getMonth()+1?'selected':''}>${m}</option>`)
+                    .join('')}
+                </select>
+              </div>
+              <div>
+                <label>Year</label>
+                <input class="input" id="bill-year-${acc.id}" type="number" value="${new Date().getFullYear()}" style="width:90px" />
+              </div>
+              <div style="display:flex;align-items:flex-end">
+                <button class="btn btn-primary btn-sm" onclick="loadBill(${acc.id}, '${acc.customer_name}')">View Bill</button>
+              </div>
+            </div>
+            <div id="bill-result-${acc.id}"></div>
+          </div>
+        </div>
+      </div>
+    `;
+    loadLedger(acc.id);
+  }
+
+  function switchDTab(panelId, el) {
+    const container = el.closest('.card');
+    container.querySelectorAll('.dtab').forEach(t => t.classList.remove('active'));
+    container.querySelectorAll('.dtab-panel').forEach(p => p.classList.remove('active'));
+    el.classList.add('active');
+    document.getElementById(panelId).classList.add('active');
+  }
+
+  // ── Ledger ────────────────────────────────────────────────────────────────
+  async function loadLedger(id) {
+    const el = document.getElementById(`txn-list-${id}`);
+    if (!el) return;
+    try {
+      const txns = await api(`/api/loans/${id}/transactions`);
+      if (!txns.length) {
+        el.innerHTML = '<div style="color:var(--slate-400);text-align:center;padding:1.5rem">No transactions yet.</div>';
+        return;
+      }
+      const ICONS = { borrow: '💸', repay: '✅', interest: '📈' };
+      const LABELS = { borrow: 'Advance / Borrow', repay: 'Repayment', interest: 'Interest Charge' };
+      el.innerHTML = txns.map(t => `
+        <div class="txn-row">
+          <div class="txn-icon">${ICONS[t.transaction_type] || '•'}</div>
+          <div class="txn-body">
+            <div class="txn-type">${LABELS[t.transaction_type] || t.transaction_type}</div>
+            ${t.notes ? `<div class="txn-note">${t.notes}</div>` : ''}
+            <div class="txn-date">${t.transaction_date}</div>
+          </div>
+          <div class="txn-amount ${t.transaction_type === 'repay' ? 'credit' : 'debit'}">
+            ${t.transaction_type === 'repay' ? '−' : '+'} ${fmt(t.amount)}
+          </div>
+        </div>
+      `).join('');
+    } catch(e) {
+      el.innerHTML = '<div style="color:#991b1b;padding:1rem">Failed to load transactions.</div>';
+    }
+  }
+
+  // ── Add Transaction Modal ─────────────────────────────────────────────────
+  let currentAccountId = null;
+
+  function openTxnModal(id) {
+    currentAccountId = id;
+    setTxnType('borrow');
+    document.getElementById('txn-amount').value = '';
+    document.getElementById('txn-date').value   = new Date().toISOString().split('T')[0];
+    document.getElementById('txn-notes').value  = '';
+    document.getElementById('txn-modal').classList.remove('hidden');
+  }
+
+  async function saveTxn() {
+    const amount = parseFloat(document.getElementById('txn-amount').value);
+    if (!(amount > 0)) { showAlert(alertEl, 'error', 'Enter a valid amount'); return; }
+    try {
+      await api(`/api/loans/${currentAccountId}/transactions`, {
+        method: 'POST',
+        body: JSON.stringify({
+          transaction_type: txnType,
+          amount:           amount,
+          transaction_date: document.getElementById('txn-date').value || null,
+          notes:            document.getElementById('txn-notes').value || null,
+        }),
+      });
+      closeModal('txn-modal');
+      await reloadAccount(currentAccountId);
+      showAlert(alertEl, 'success', 'Transaction recorded.');
+    } catch(e) { showAlert(alertEl, 'error', e.message); }
+  }
+
+  // ── Apply interest ────────────────────────────────────────────────────────
+  async function applyInterest(id) {
+    const acc = accounts.find(a => a.id === id);
+    if (!confirm(`Apply ${acc?.interest_rate}% monthly interest on ₹${acc?.balance?.toFixed(2)} for ${acc?.customer_name}?`)) return;
+    try {
+      const txn = await api(`/api/loans/${id}/apply-interest`, {
+        method: 'POST',
+        body: JSON.stringify({}),
+      });
+      showAlert(alertEl, 'success', `Interest of ₹${txn.amount} applied.`);
+      await reloadAccount(id);
+    } catch(e) { showAlert(alertEl, 'error', e.message); }
+  }
+
+  // ── Toggle account status ─────────────────────────────────────────────────
+  async function toggleStatus(id, status) {
+    if (!confirm(`Mark this account as ${status}?`)) return;
+    try {
+      await api(`/api/loans/${id}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status }),
+      });
+      await reloadAccount(id);
+    } catch(e) { showAlert(alertEl, 'error', e.message); }
+  }
+
+  // ── Monthly bill ──────────────────────────────────────────────────────────
+  function showBilling(id, name) {
+    // Switch to billing tab
+    const card = document.getElementById('detail-panel').querySelector('.card');
+    if (!card) return;
+    const tabs = card.querySelectorAll('.dtab');
+    const panels = card.querySelectorAll('.dtab-panel');
+    tabs.forEach(t => t.classList.remove('active'));
+    panels.forEach(p => p.classList.remove('active'));
+    if (tabs[1]) tabs[1].classList.add('active');
+    const billPanel = document.getElementById(`billing-${id}`);
+    if (billPanel) billPanel.classList.add('active');
+    loadBill(id, name);
+  }
+
+  async function loadBill(id, customerName) {
+    const month = document.getElementById(`bill-month-${id}`).value;
+    const year  = document.getElementById(`bill-year-${id}`).value;
+    const el    = document.getElementById(`bill-result-${id}`);
+    el.innerHTML = '<div style="color:var(--slate-400);text-align:center;padding:1rem">Loading…</div>';
+    try {
+      const b = await api(`/api/loans/bill/${encodeURIComponent(customerName)}?year=${year}&month=${month}`);
+      const monthName = new Date(year, month-1, 1).toLocaleString('en-IN', {month:'long'});
+      el.innerHTML = `
+        <div style="font-weight:600;color:var(--slate-700);margin-bottom:.75rem">${monthName} ${year} — ${b.customer_name}</div>
+
+        ${b.flower_lines.length ? `
+          <div class="text-sm" style="font-weight:600;color:var(--slate-500);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.5rem">🌸 Flower Earnings</div>
+          ${b.flower_lines.map(f => `
+            <div class="bill-row">
+              <span>${f.flower_type} · ${f.weight_kg} kg · ${f.count} entries</span>
+              <span class="font-mono" style="color:var(--green-700);font-weight:600">${fmt(f.amount)}</span>
+            </div>
+          `).join('')}
+          <div class="bill-row" style="font-weight:700">
+            <span>Total Earnings</span>
+            <span class="font-mono" style="color:var(--green-700)">${fmt(b.total_earnings)}</span>
+          </div>
+        ` : '<div class="text-muted text-sm" style="margin-bottom:.75rem">No flower deliveries this month.</div>'}
+
+        ${b.loan_balance > 0 ? `
+          <div class="text-sm" style="font-weight:600;color:var(--slate-500);text-transform:uppercase;letter-spacing:.06em;margin-top:1rem;margin-bottom:.5rem">💳 Loan Account</div>
+          <div class="bill-row">
+            <span>Outstanding Balance</span>
+            <span class="font-mono" style="color:#991b1b;font-weight:700">${fmt(b.loan_balance)}</span>
+          </div>
+          ${b.monthly_repaid > 0 ? `
+            <div class="bill-row">
+              <span>Already deducted this month</span>
+              <span class="font-mono" style="color:var(--green-700)">− ${fmt(b.monthly_repaid)}</span>
+            </div>
+          ` : ''}
+          <div style="margin-top:.75rem;display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+            <input class="input" id="deduct-amt-${id}" type="number" step="1" min="1"
+              placeholder="Deduct amount…"
+              style="flex:1;min-width:120px;max-width:180px" />
+            <input class="input" id="deduct-note-${id}" placeholder="Note (e.g. bill deduction)"
+              style="flex:2;min-width:140px" />
+            <button class="btn btn-primary btn-sm" onclick="recordBillDeduction(${id}, '${customerName}', ${year}, ${month})">
+              Record Deduction
+            </button>
+          </div>
+        ` : ''}
+
+        <div class="bill-total">
+          <span>Net Payable to Farmer</span>
+          <span class="amount">${fmt(b.net_payable)}</span>
+        </div>
+      `;
+    } catch(e) {
+      el.innerHTML = `<div class="alert alert-error">${e.message}</div>`;
+    }
+  }
+
+  async function recordBillDeduction(id, customerName, year, month) {
+    const amount = parseFloat(document.getElementById(`deduct-amt-${id}`).value);
+    const notes  = document.getElementById(`deduct-note-${id}`).value ||
+      `Bill deduction — ${new Date(year, month-1, 1).toLocaleString('en-IN',{month:'long'})} ${year}`;
+    if (!(amount > 0)) { showAlert(alertEl, 'error', 'Enter deduction amount'); return; }
+    try {
+      await api(`/api/loans/${id}/transactions`, {
+        method: 'POST',
+        body: JSON.stringify({
+          transaction_type: 'repay',
+          amount,
+          notes,
+          transaction_date: new Date(year, month-1, 28).toISOString().split('T')[0],
+        }),
+      });
+      showAlert(alertEl, 'success', `Deduction of ₹${amount} recorded.`);
+      await reloadAccount(id);
+      loadBill(id, customerName);
+    } catch(e) { showAlert(alertEl, 'error', e.message); }
+  }
+
+  // ── New account modal ─────────────────────────────────────────────────────
+  async function openNewAccount() {
+    // Pre-fill customer dropdown
+    try {
+      const customers = await api('/api/customers/');
+      const sel = document.getElementById('na-customer');
+      sel.innerHTML = '<option value="">Choose from existing farmers…</option>' +
+        customers.map(c =>
+          `<option value="${c.name}" data-tamil="${c.name_tamil||''}">${c.name}${c.name_tamil?' · '+c.name_tamil:''}</option>`
+        ).join('');
+      sel.onchange = () => {
+        const opt = sel.selectedOptions[0];
+        if (opt.value) {
+          document.getElementById('na-name').value  = opt.value;
+          document.getElementById('na-tamil').value = opt.dataset.tamil || '';
+        }
+      };
+    } catch(e) {}
+    document.getElementById('na-name').value  = '';
+    document.getElementById('na-tamil').value = '';
+    document.getElementById('na-rate').value  = '2';
+    document.getElementById('na-notes').value = '';
+    document.getElementById('new-acc-modal').classList.remove('hidden');
+  }
+
+  async function saveNewAccount() {
+    const name = document.getElementById('na-name').value.trim() ||
+                 document.getElementById('na-customer').value.trim();
+    if (!name) { showAlert(alertEl, 'error', 'Farmer name is required'); return; }
+    const rate = parseFloat(document.getElementById('na-rate').value);
+    if (isNaN(rate) || rate < 0) { showAlert(alertEl, 'error', 'Enter a valid interest rate'); return; }
+    try {
+      const acc = await api('/api/loans/', {
+        method: 'POST',
+        body: JSON.stringify({
+          customer_name:       name,
+          customer_name_tamil: document.getElementById('na-tamil').value.trim() || null,
+          interest_rate:       rate,
+          notes:               document.getElementById('na-notes').value.trim() || null,
+        }),
+      });
+      closeModal('new-acc-modal');
+      showAlert(alertEl, 'success', `Account created for ${acc.customer_name}.`);
+      await loadAccounts();
+      await loadSummary();
+      selectAccount(acc.id);
+    } catch(e) { showAlert(alertEl, 'error', e.message); }
+  }
+
+  // ── Reload helpers ────────────────────────────────────────────────────────
+  async function reloadAccount(id) {
+    await loadAccounts();
+    await loadSummary();
+    const acc = accounts.find(a => a.id === id);
+    if (acc) renderDetail(acc);
+  }
+
+  // ── Init ──────────────────────────────────────────────────────────────────
+  loadAccounts();
+  loadSummary();
+</script>
+{% endblock %}
