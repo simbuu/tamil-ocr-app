@@ -1,6 +1,20 @@
 {% extends "base.html" %}
 {% block title %}Dashboard | Tamil OCR{% endblock %}
 
+{% block head %}
+<style>
+  @media (max-width: 640px) {
+    /* Hide less-critical columns in recent transactions table */
+    #recent-tbody tr td:nth-child(5),
+    #recent-tbody tr td:nth-child(6),
+    #recent-tbody tr td:nth-child(7),
+    table thead tr th:nth-child(5),
+    table thead tr th:nth-child(6),
+    table thead tr th:nth-child(7) { display: none; }
+  }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="page-header">
   <h1>🌸 Flower Transaction Dashboard</h1>
@@ -42,7 +56,8 @@
 </div>
 
 <!-- Quick actions -->
-<div class="flex gap-2 mb-2">
+<div class="flex gap-2 mb-2" style="flex-wrap:wrap">
+  <a href="/quick-entry" class="btn btn-primary">⚡ Quick Entry</a>
   <a href="/upload" class="btn btn-primary">📷 Upload Handwritten Record</a>
   <a href="/reports" class="btn btn-outline">📄 Generate Reports</a>
 </div>

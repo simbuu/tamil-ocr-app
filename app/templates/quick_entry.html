@@ -280,6 +280,25 @@
   .qe-wrap {
     max-width: 520px;
     margin: 0 auto;
+    /* Extra bottom padding so content isn't obscured by mobile keyboard */
+    padding-bottom: env(safe-area-inset-bottom, 1rem);
+  }
+
+  /* Flower buttons — 2 columns on very small screens if many flowers */
+  @media (max-width: 380px) {
+    .qe-flower-grid { grid-template-columns: repeat(2, 1fr) !important; }
+    .qe-weight-grid { grid-template-columns: repeat(4, 1fr); }
+    .qe-weight-btn { font-size: .8rem; padding: .5rem .2rem; }
+  }
+
+  /* Larger tap targets on mobile */
+  @media (max-width: 640px) {
+    .qe-flower-btn { padding: .85rem .5rem; font-size: .88rem; }
+    .qe-weight-btn { padding: .65rem .4rem; min-height: 44px; }
+    .qe-save-btn { padding: 1rem; font-size: 1.05rem; }
+    .qe-select { min-height: 46px; font-size: 1rem; }
+    .qe-weight-display { font-size: 1.8rem; }
+    .qe-stat-value { font-size: 1.8rem; }
   }
 </style>
 {% endblock %}

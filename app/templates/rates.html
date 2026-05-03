@@ -1,6 +1,26 @@
 {% extends "base.html" %}
 {% block title %}Market Rates | Tamil OCR{% endblock %}
 
+{% block head %}
+<style>
+  .rates-grid {
+    display: grid;
+    grid-template-columns: 1fr 360px;
+    gap: 1.5rem;
+  }
+  @media (max-width: 700px) {
+    .rates-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+  /* Mobile-friendly rate rows */
+  @media (max-width: 600px) {
+    .rates-tbody td:nth-child(2) { display: none; } /* hide Tamil column */
+    .rates-tbody th:nth-child(2) { display: none; }
+  }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="page-header">
   <h1>📊 Market Rates</h1>
@@ -9,7 +29,7 @@
 
 <div id="alert" class="alert hidden"></div>
 
-<div style="display:grid;grid-template-columns:1fr 360px;gap:1.5rem">
+<div class="rates-grid">
 
   <!-- Rates table -->
   <div class="card">

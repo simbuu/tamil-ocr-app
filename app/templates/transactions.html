@@ -11,6 +11,42 @@
   .modal {
     background: var(--white); border-radius: 12px; padding: 1.5rem;
     max-width: 480px; width: 90%; box-shadow: 0 20px 48px rgba(0,0,0,.2);
+    max-height: 90vh; overflow-y: auto;
+  }
+
+  /* ── Mobile card view for transactions ──────────────── */
+  .tx-card {
+    border: 1px solid var(--slate-100);
+    border-radius: 10px;
+    padding: 1rem;
+    margin-bottom: .6rem;
+    background: var(--white);
+    display: none;  /* shown only on mobile */
+  }
+  .tx-card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: .5rem;
+    margin-bottom: .6rem;
+  }
+  .tx-card-name { font-weight: 700; font-size: .95rem; color: var(--slate-900); }
+  .tx-card-tamil { font-size: .8rem; color: var(--slate-500); margin-top: .1rem; }
+  .tx-card-date { font-size: .75rem; color: var(--slate-400); font-family: var(--font-mono); white-space: nowrap; }
+  .tx-card-body { display: grid; grid-template-columns: 1fr 1fr; gap: .4rem .75rem; font-size: .85rem; }
+  .tx-card-label { font-size: .7rem; font-weight: 600; color: var(--slate-400); text-transform: uppercase; letter-spacing: .06em; }
+  .tx-card-value { font-weight: 600; color: var(--slate-800); }
+  .tx-card-actions { display: flex; gap: .5rem; margin-top: .75rem; padding-top: .75rem; border-top: 1px solid var(--slate-100); }
+  .tx-card-actions .btn { flex: 1; justify-content: center; }
+
+  /* Hide / show based on screen width */
+  @media (max-width: 700px) {
+    .tx-table-wrap { display: none; }
+    .tx-card { display: block; }
+    #tx-cards-container { display: block; }
+  }
+  @media (min-width: 701px) {
+    #tx-cards-container { display: none; }
   }
 </style>
 {% endblock %}
@@ -27,7 +63,7 @@
 <div id="alert" class="alert hidden"></div>
 
 <div class="card mb-2">
-  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1rem;align-items:end">
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:.75rem;align-items:end">
     <div>
       <label for="f-customer">Customer Name</label>
       <input class="input" id="f-customer" placeholder="Search customer…" />
@@ -48,7 +84,7 @@
       <button class="btn btn-primary" id="search-btn" style="width:100%;justify-content:center">🔍 Search</button>
     </div>
     <div>
-      <button class="btn btn-outline" id="reset-btn" style="width:100%;justify-content:center">Reset</button>
+      <button class="btn btn-outline" id="reset-btn" style="width:100%;justify-content:center">↺ Reset</button>
     </div>
   </div>
 </div>
@@ -57,7 +93,9 @@
   <div class="flex items-center justify-between mb-2">
     <h2 class="card-title" style="margin:0">Results <span id="count-badge" class="badge badge-green" style="font-size:.85rem;margin-left:.5rem"></span></h2>
   </div>
-  <div class="table-wrap">
+
+  <!-- Desktop table -->
+  <div class="table-wrap tx-table-wrap">
     <table>
       <thead>
         <tr>
@@ -78,6 +116,9 @@
       </tbody>
     </table>
   </div>
+
+  <!-- Mobile cards -->
+  <div id="tx-cards-container"></div>
 </div>
 
 <!-- Report Issue Modal -->
@@ -115,11 +156,12 @@
 
 {% block scripts %}
 <script>
-  const tbody       = document.getElementById('tx-tbody');
-  const alertEl     = document.getElementById('alert');
-  const countBadge  = document.getElementById('count-badge');
-  const reportModal = document.getElementById('report-modal');
-  let reportingTxId = null;
+  const tbody          = document.getElementById('tx-tbody');
+  const cardsContainer = document.getElementById('tx-cards-container');
+  const alertEl        = document.getElementById('alert');
+  const countBadge     = document.getElementById('count-badge');
+  const reportModal    = document.getElementById('report-modal');
+  let reportingTxId    = null;
 
   async function loadTransactions(params = {}) {
     const qs = new URLSearchParams(Object.entries(params).filter(([,v])=>v)).toString();
@@ -128,9 +170,11 @@
 
     if (!data.transactions.length) {
       tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:2rem;color:var(--slate-500)">No transactions found.</td></tr>';
+      cardsContainer.innerHTML = '<p style="text-align:center;padding:2rem;color:var(--slate-500)">No transactions found.</p>';
       return;
     }
 
+    // ── Desktop table rows ────────────────────────────────────
     tbody.innerHTML = data.transactions.map(tx => `
       <tr>
         <td class="font-mono text-sm" style="color:var(--slate-500)">${tx.id}</td>
@@ -155,6 +199,57 @@
         </td>
       </tr>
     `).join('');
+
+    // ── Mobile cards ──────────────────────────────────────────
+    cardsContainer.innerHTML = data.transactions.map(tx => {
+      const confBadge = tx.ocr_confidence != null
+        ? `<span class="badge ${tx.ocr_confidence>.8?'badge-green':tx.ocr_confidence>.5?'badge-amber':'badge-red'}">${(tx.ocr_confidence*100).toFixed(0)}%</span>`
+        : '<span style="color:var(--slate-400)">—</span>';
+      const sourceBadge = tx.was_manually_added
+        ? '<span class="badge badge-amber">Manual</span>'
+        : (tx.source_image ? '<span class="badge badge-green">OCR</span>' : '—');
+      return `
+        <div class="tx-card">
+          <div class="tx-card-header">
+            <div>
+              <div class="tx-card-name">${tx.customer_name}</div>
+              ${tx.customer_name_tamil ? `<div class="tx-card-tamil">${tx.customer_name_tamil}</div>` : ''}
+            </div>
+            <div class="tx-card-date">${tx.transaction_date}</div>
+          </div>
+          <div class="tx-card-body">
+            <div>
+              <div class="tx-card-label">Flower</div>
+              <div class="tx-card-value"><span class="badge badge-green">${tx.flower_type}</span></div>
+            </div>
+            <div>
+              <div class="tx-card-label">Weight</div>
+              <div class="tx-card-value font-mono">${tx.weight_kg.toFixed(2)} kg</div>
+            </div>
+            <div>
+              <div class="tx-card-label">Amount</div>
+              <div class="tx-card-value font-mono" style="color:var(--green-700)">₹ ${tx.total_amount.toFixed(2)}</div>
+            </div>
+            <div>
+              <div class="tx-card-label">Rate</div>
+              <div class="tx-card-value font-mono">₹${tx.price_per_kg}/kg</div>
+            </div>
+            <div>
+              <div class="tx-card-label">Source</div>
+              <div>${sourceBadge}</div>
+            </div>
+            <div>
+              <div class="tx-card-label">Confidence</div>
+              <div>${confBadge}</div>
+            </div>
+          </div>
+          <div class="tx-card-actions">
+            <button class="btn btn-outline btn-sm" onclick="openReport(${tx.id})">🚨 Report</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteTx(${tx.id})">🗑 Delete</button>
+          </div>
+        </div>
+      `;
+    }).join('');
   }
 
   window.deleteTx = async (id) => {

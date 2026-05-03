@@ -3,6 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#052e16" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>{% block title %}Tamil OCR | Flower Transactions{% endblock %}</title>
 
   <!-- Fonts -->
@@ -62,7 +66,7 @@
       height: 64px;
       position: sticky;
       top: 0;
-      z-index: 100;
+      z-index: 200;
       box-shadow: 0 2px 20px rgba(0,0,0,.4);
     }
     .nav-logo {
@@ -85,6 +89,7 @@
       font-size: .9rem;
       font-weight: 500;
       transition: background .15s, color .15s;
+      white-space: nowrap;
     }
     .nav-link:hover, .nav-link.active {
       background: rgba(74,222,128,.12);
@@ -100,6 +105,45 @@
       letter-spacing: .05em;
       margin-left: .3rem;
     }
+
+    /* Hamburger button — hidden on desktop */
+    .nav-hamburger {
+      display: none;
+      background: none;
+      border: none;
+      color: var(--green-400);
+      cursor: pointer;
+      padding: .5rem;
+      margin-left: auto;
+      flex-direction: column;
+      gap: 5px;
+      align-items: center;
+      justify-content: center;
+      width: 40px; height: 40px;
+      border-radius: 8px;
+      transition: background .15s;
+    }
+    .nav-hamburger:hover { background: rgba(74,222,128,.1); }
+    .nav-hamburger span {
+      display: block;
+      width: 22px; height: 2px;
+      background: var(--green-400);
+      border-radius: 2px;
+      transition: all .25s;
+    }
+    .nav-hamburger.open span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+    .nav-hamburger.open span:nth-child(2) { opacity: 0; transform: scaleX(0); }
+    .nav-hamburger.open span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+
+    /* Mobile nav overlay */
+    .nav-overlay {
+      display: none;
+      position: fixed;
+      inset: 64px 0 0 0;
+      background: rgba(0,0,0,.5);
+      z-index: 190;
+    }
+    .nav-overlay.open { display: block; }
 
     /* ── Page wrapper ──────────────────────────────────── */
     .page { flex: 1; padding: 2rem; max-width: 1280px; margin: 0 auto; width: 100%; }
@@ -154,6 +198,7 @@
       border: none;
       transition: all .15s;
       text-decoration: none;
+      min-height: 40px;
     }
     .btn-primary { background: var(--green-700); color: var(--white); }
     .btn-primary:hover { background: var(--green-900); transform: translateY(-1px); box-shadow: var(--shadow-md); }
@@ -161,10 +206,10 @@
     .btn-outline:hover { background: var(--green-100); }
     .btn-danger { background: var(--red-100); color: #991b1b; }
     .btn-danger:hover { background: #fca5a5; }
-    .btn-sm { padding: .4rem .8rem; font-size: .8rem; }
+    .btn-sm { padding: .4rem .8rem; font-size: .8rem; min-height: 34px; }
 
     /* ── Table ─────────────────────────────────────────── */
-    .table-wrap { overflow-x: auto; border-radius: var(--radius); border: 1px solid var(--slate-100); }
+    .table-wrap { overflow-x: auto; border-radius: var(--radius); border: 1px solid var(--slate-100); -webkit-overflow-scrolling: touch; }
     table { width: 100%; border-collapse: collapse; font-size: .9rem; }
     th {
       background: var(--green-950);
@@ -242,29 +287,134 @@
     .text-sm  { font-size: .85rem; }
     .font-mono { font-family: var(--font-mono); }
     .hidden { display: none !important; }
+
+    /* ── ════════════════════════════════════════════════ ── */
+    /* ── MOBILE RESPONSIVE STYLES (≤ 860px)             ── */
+    /* ── ════════════════════════════════════════════════ ── */
+    @media (max-width: 860px) {
+
+      /* Nav — show hamburger, hide inline links */
+      .nav {
+        padding: 0 1rem;
+        gap: .75rem;
+      }
+      .nav-hamburger {
+        display: flex;
+      }
+      .nav-links {
+        /* Mobile dropdown panel */
+        position: fixed;
+        top: 64px;
+        left: 0; right: 0;
+        background: var(--green-950);
+        flex-direction: column;
+        gap: .15rem;
+        padding: .75rem .75rem 1rem;
+        z-index: 195;
+        border-top: 1px solid rgba(255,255,255,.08);
+        box-shadow: 0 12px 32px rgba(0,0,0,.5);
+        max-height: calc(100vh - 64px);
+        overflow-y: auto;
+        /* Hidden by default */
+        transform: translateY(-8px);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity .2s, transform .2s;
+      }
+      .nav-links.open {
+        transform: translateY(0);
+        opacity: 1;
+        pointer-events: auto;
+      }
+      .nav-link {
+        padding: .75rem 1rem;
+        font-size: .95rem;
+        border-radius: 8px;
+      }
+
+      /* Page padding */
+      .page { padding: 1rem; }
+
+      /* Page header */
+      .page-header { margin-bottom: 1.25rem; }
+      .page-header h1 { font-size: 1.5rem; }
+      .page-header.flex {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: .75rem;
+      }
+
+      /* Stat grid — 2 columns on mobile */
+      .stat-grid { grid-template-columns: repeat(2, 1fr); gap: .75rem; margin-bottom: 1.25rem; }
+      .stat-card { padding: 1rem 1rem; }
+      .stat-value { font-size: 1.6rem; }
+      .stat-sub { display: none; }
+
+      /* Cards */
+      .card { padding: 1rem; }
+      .card-title { font-size: 1.1rem; margin-bottom: .75rem; }
+
+      /* Inputs — larger tap target on mobile */
+      .input {
+        padding: .75rem .9rem;
+        font-size: 1rem;
+        min-height: 46px;
+      }
+      select.input { min-height: 46px; }
+
+      /* Buttons */
+      .btn { min-height: 44px; padding: .65rem 1.1rem; }
+      .btn-sm { min-height: 38px; }
+
+      /* Flex header rows — stack on mobile */
+      .flex.items-center.justify-between {
+        flex-wrap: wrap;
+        gap: .5rem;
+      }
+
+      /* Tables — horizontal scroll with touch momentum */
+      .table-wrap {
+        border-radius: 8px;
+        -webkit-overflow-scrolling: touch;
+      }
+      td, th { padding: .7rem .75rem; font-size: .82rem; }
+    }
+
+    /* Extra-small phones */
+    @media (max-width: 480px) {
+      .stat-grid { grid-template-columns: 1fr 1fr; gap: .5rem; }
+      .stat-value { font-size: 1.4rem; }
+      .btn { font-size: .85rem; }
+      .gap-2 { gap: .5rem; }
+    }
   </style>
 
   {% block head %}{% endblock %}
 </head>
 <body>
 
+<!-- Mobile nav overlay (tap to close) -->
+<div class="nav-overlay" id="nav-overlay"></div>
+
 <nav class="nav">
   <a href="/" class="nav-logo">🌸 <span>Tamil</span>OCR</a>
-  <div class="nav-links">
-    <a href="/" class="nav-link {% if request.url.path == '/' %}active{% endif %}">Dashboard</a>
+
+  <!-- Hamburger (mobile only) -->
+  <button class="nav-hamburger" id="nav-hamburger" aria-label="Toggle menu" aria-expanded="false">
+    <span></span><span></span><span></span>
+  </button>
+
+  <div class="nav-links" id="nav-links">
+    <a href="/" class="nav-link {% if request.url.path == '/' %}active{% endif %}">🏠 Dashboard</a>
+    <a href="/quick-entry" class="nav-link {% if request.url.path == '/quick-entry' %}active{% endif %}">⚡ Quick Entry</a>
     <a href="/upload" class="nav-link {% if request.url.path == '/upload' %}active{% endif %}">
-      Upload <span class="nav-badge">OCR</span>
+      📷 Upload <span class="nav-badge">OCR</span>
     </a>
-    <a href="/transactions" class="nav-link {% if request.url.path == '/transactions' %}active{% endif %}">Transactions</a>
-    <a href="/rates" class="nav-link {% if request.url.path == '/rates' %}active{% endif %}">Market Rates</a>
-    <a href="/reports" class="nav-link {% if request.url.path == '/reports' %}active{% endif %}">Reports</a>
-    <a href="/customers" class="nav-link {% if request.url.path == '/customers' %}active{% endif %}">
-      👥 Customers
-    </a>
-    <a href="/quick-entry" class="nav-link {% if request.url.path == '/quick-entry' %}active{% endif %}">
-      ⚡ Quick Entry
-    </a>
-    <a href="/admin" class="nav-link {% if request.url.path == '/admin' %}active{% endif %}">Admin</a>
+    <a href="/transactions" class="nav-link {% if request.url.path == '/transactions' %}active{% endif %}">📋 Transactions</a>
+    <a href="/rates" class="nav-link {% if request.url.path == '/rates' %}active{% endif %}">📊 Market Rates</a>
+    <a href="/reports" class="nav-link {% if request.url.path == '/reports' %}active{% endif %}">📄 Reports</a>
+    <a href="/customers" class="nav-link {% if request.url.path == '/customers' %}active{% endif %}">👥 Customers</a>
+    <a href="/admin" class="nav-link {% if request.url.path == '/admin' %}active{% endif %}">🔬 Admin</a>
     <a href="/docs" class="nav-link" target="_blank">API Docs ↗</a>
   </div>
 </nav>
@@ -274,12 +424,44 @@
 </main>
 
 <script>
-  // Active nav helper
+  // ── Hamburger nav toggle ─────────────────────────────────
+  const hamburger = document.getElementById('nav-hamburger');
+  const navLinks  = document.getElementById('nav-links');
+  const overlay   = document.getElementById('nav-overlay');
+
+  function openNav() {
+    hamburger.classList.add('open');
+    navLinks.classList.add('open');
+    overlay.classList.add('open');
+    hamburger.setAttribute('aria-expanded', 'true');
+    document.body.style.overflow = 'hidden';
+  }
+  function closeNav() {
+    hamburger.classList.remove('open');
+    navLinks.classList.remove('open');
+    overlay.classList.remove('open');
+    hamburger.setAttribute('aria-expanded', 'false');
+    document.body.style.overflow = '';
+  }
+
+  hamburger.addEventListener('click', () => {
+    navLinks.classList.contains('open') ? closeNav() : openNav();
+  });
+  overlay.addEventListener('click', closeNav);
+
+  // Close nav when a link is tapped on mobile
+  navLinks.querySelectorAll('.nav-link').forEach(a => {
+    a.addEventListener('click', () => {
+      if (window.innerWidth <= 860) closeNav();
+    });
+  });
+
+  // ── Active nav highlight ─────────────────────────────────
   document.querySelectorAll('.nav-link').forEach(a => {
     if (a.href === location.href) a.classList.add('active');
   });
 
-  // Generic fetch helper
+  // ── Generic fetch helper ─────────────────────────────────
   async function api(url, options = {}) {
     const r = await fetch(url, {
       headers: {'Content-Type': 'application/json', ...options.headers},
