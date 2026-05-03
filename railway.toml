@@ -13,7 +13,15 @@ restartPolicyMaxRetries = 3
 name = "tamil-ocr-app"
 
 [services.variables]
-USE_GPU = "false"
+# ── Wire the Railway PostgreSQL plugin URL into the app ──────────────────────
+# Railway injects DATABASE_URL automatically when a Postgres service is linked
+# to this service. If it is not showing up, set it manually in the Railway
+# dashboard: Variables → New Variable → DATABASE_URL = ${{Postgres.DATABASE_URL}}
+#
+# Uncomment the line below only if Railway is NOT auto-linking the variable:
+# DATABASE_URL = "${{Postgres.DATABASE_URL}}"
+
+USE_GPU       = "false"
 OCR_LANGUAGES = "ta,en"
 MAX_UPLOAD_MB = "20"
-UPLOAD_DIR = "app/static/uploads"
+UPLOAD_DIR    = "app/static/uploads"

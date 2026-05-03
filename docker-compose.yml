@@ -10,7 +10,7 @@ services:
       - ocr_models:/app/models
       - uploads:/app/app/static/uploads
     environment:
-      - DATABASE_URL=postgresql://ocr_user:ocr_pass@db:5432/tamil_ocr
+      - DATABASE_URL=${DATABASE_URL}
       - USE_GPU=false
     depends_on:
       db:
